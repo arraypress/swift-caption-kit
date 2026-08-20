@@ -1,0 +1,15 @@
+{
+  "originHash" : "9b1721b1849fda0314f0a84cf3e2a80a4bcb0208a3b5190fa789cd5e2c9e4458",
+  "pins" : [
+    {
+      "identity" : "swift-depth-blur",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arraypress/swift-depth-blur.git",
+      "state" : {
+        "revision" : "8e918dc669e87c73a196518c24408d0f2601b62c",
+        "version" : "0.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}
