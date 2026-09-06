@@ -19,6 +19,7 @@ let package = Package(
         ),
     ],
     dependencies: [
+        .package(url: "https://github.com/arraypress/swift-subtitle-kit.git", from: "0.1.0"),
         // Background separation by depth. The only external package: 186
         // lines, no model weights, no dependencies of its own. Everything
         // else here is an Apple framework.
@@ -28,6 +29,7 @@ let package = Package(
         .target(
             name: "CaptionKitLite",
             dependencies: [
+                .product(name: "SubtitleKit", package: "swift-subtitle-kit"),
                 .product(name: "DepthBlur", package: "swift-depth-blur"),
             ]
         ),

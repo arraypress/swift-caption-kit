@@ -1,5 +1,5 @@
 {
-  "originHash" : "9b1721b1849fda0314f0a84cf3e2a80a4bcb0208a3b5190fa789cd5e2c9e4458",
+  "originHash" : "38aeb38a1fac785de2a7cc718d556bb7edafada29b21bb910505e4e8ef087b1c",
   "pins" : [
     {
       "identity" : "swift-depth-blur",
@@ -7,6 +7,15 @@
       "location" : "https://github.com/arraypress/swift-depth-blur.git",
       "state" : {
         "revision" : "8e918dc669e87c73a196518c24408d0f2601b62c",
+        "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "swift-subtitle-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arraypress/swift-subtitle-kit.git",
+      "state" : {
+        "revision" : "68a355c9baa3ca36ee55e028dbd4bd3106ecaa18",
         "version" : "0.1.0"
       }
     }
