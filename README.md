@@ -90,6 +90,38 @@ let result = FillerCutter.detect(
 document.cuts = result.cuts
 ```
 
+## Measured on real speech: fillers, pauses and the splice
+
+Two public-domain recordings: five minutes of a 1985 oral history (Hanford
+Mills Museum, archive.org, Public Domain Mark) and four minutes of a NASA crew
+interview (STS-133, archive.org, US government work). `FillerCutter` with
+fillers on and pauses over 1 s, then `Splicer`, via `caption cut --verify`:
+
+| | oral history (5:00) | interview (4:00) |
+|---|---|---|
+| Cuts | 11 — 9 pauses, 2 "uh" | 5 — 3 pauses, "um", "uh uh" |
+| Shorter by | 24.2 s | 6.2 s |
+| Whole run, transcription included | 4.9 s | 5.3 s |
+| Kept words heard again in order | 92.1% | 98.2% |
+| Fillers heard again | 2 × "uh" | 1 × "um" |
+
+- **Apple's recogniser wrote fillers as fillers.** "uh" stayed "uh" on real
+  voices; the "Ah" seen in earlier probes came from a synthetic (`say`) voice.
+  It wrote only 2–3 per ~900 words, which is low for unscripted speech —
+  whether it drops others was not measured (nobody listened).
+- **The second listen finds fillers the first missed.** Both "uh"s it heard in
+  the cut oral history sit where the first transcript had no filler at all, so
+  the cuts were right and the first pass simply did not write them. The "um" in
+  the interview was heard ~0.4 s before the planned cut: Apple's word times come
+  on a 0.06 s grid, and the start of that "um" probably survived. Evidence, from
+  one case, for more padding before a filler than after it.
+- **"Words heard again" is a weak signal on old recordings.** The recogniser
+  agreed with itself 100% on the same file twice, and 100% after an uncut
+  re-encode — but 92% after the cuts, with the differences spread through the
+  whole five minutes ("sawmill" → "song you know" thirty seconds from any cut),
+  not at the seams. Removing the pauses changes how it segments a noisy tape. On
+  the clean studio interview the same score was 98%.
+
 ## What it is not
 
 This is the caption engine, not an editor. There are no stickers, titles,
