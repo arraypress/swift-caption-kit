@@ -18,8 +18,10 @@ public struct CropKeyframe: Codable, Equatable, Sendable {
     /// Source time in seconds.
     public var time: TimeInterval
 
-    /// The crop center, `0…1` per axis, top-left semantics (same space as
-    /// the document's `cropOffset`).
+    /// Where the crop sits, the same space as the document's `cropOffset`:
+    /// `0…1` per axis across the overflow (`0` = the left or top edge of the
+    /// source showing, `1` = the right or bottom), not the point at the
+    /// centre of the crop — see ``FaceTrack/pan(center:source:canvas:)``.
     public var offset: CaptionStyles.NormalizedPoint
 
     /// Extra zoom at this moment (`1` = no zoom, `1.5` = punched in 50%) —
@@ -111,9 +113,26 @@ public enum FaceTrack {
         )
     }
 
+    /// The crop offset (see ``CropKeyframe/offset``) that puts the source
+    /// point `center` (normalized, top-left) in the middle of an aspect-fill
+    /// crop of `source` into `canvas` — as near as the edges allow. An axis
+    /// that does not overflow keeps `0.5`.
+    public static func pan(center: CaptionStyles.NormalizedPoint, source: CGSize, canvas: CGSize) -> CaptionStyles.NormalizedPoint {
+        guard source.width > 0, source.height > 0, canvas.width > 0, canvas.height > 0 else { return center }
+        let scale = max(canvas.width / source.width, canvas.height / source.height)
+        let visibleX = canvas.width / (source.width * scale)
+        let visibleY = canvas.height / (source.height * scale)
+        func axis(_ c: CGFloat, _ visible: CGFloat) -> CGFloat {
+            visible < 0.999 ? min(1, max(0, (c - visible / 2) / (1 - visible))) : 0.5
+        }
+        return CaptionStyles.NormalizedPoint(x: axis(center.x, visibleX), y: axis(center.y, visibleY))
+    }
+
     /// Samples ~2 fps, detects the largest face per sample, smooths the
-    /// path (moving average), and thins it to meaningful moves.
-    public static func track(videoURL: URL) async throws -> [CropKeyframe] {
+    /// path (moving average), turns each face centre into the crop offset
+    /// that centres it in a `canvas`-shaped crop, and thins the path to
+    /// meaningful moves.
+    public static func track(videoURL: URL, canvas: CGSize) async throws -> [CropKeyframe] {
         let asset = AVURLAsset(url: videoURL)
         let duration = try await asset.load(.duration).seconds
         guard duration > 0 else { return [] }
@@ -128,8 +147,10 @@ public enum FaceTrack {
             .map { CMTime(seconds: $0, preferredTimescale: 600) }
 
         var samples: [(time: TimeInterval, x: CGFloat, y: CGFloat)] = []
+        var source = CGSize.zero
         for await result in generator.images(for: times) {
             guard let frame = try? result.image else { continue }
+            source = CGSize(width: frame.width, height: frame.height)
             let request = VNDetectFaceRectanglesRequest()
             let handler = VNImageRequestHandler(cgImage: frame)
             try? handler.perform([request])
@@ -150,13 +171,12 @@ public enum FaceTrack {
             let lower = max(0, index - 2)
             let upper = min(samples.count - 1, index + 2)
             let window = samples[lower...upper]
-            keyframes.append(CropKeyframe(
-                time: samples[index].time,
-                offset: CaptionStyles.NormalizedPoint(
-                    x: window.map(\.x).reduce(0, +) / CGFloat(window.count),
-                    y: window.map(\.y).reduce(0, +) / CGFloat(window.count)
-                )
-            ))
+            let center = CaptionStyles.NormalizedPoint(
+                x: window.map(\.x).reduce(0, +) / CGFloat(window.count),
+                y: window.map(\.y).reduce(0, +) / CGFloat(window.count)
+            )
+            keyframes.append(CropKeyframe(time: samples[index].time,
+                                          offset: pan(center: center, source: source, canvas: canvas)))
         }
         var thinned = [keyframes[0]]
         for keyframe in keyframes.dropFirst() {

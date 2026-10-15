@@ -380,7 +380,7 @@ extension CaptionDocument {
     /// the speaker.
     public func captionIsBehindSubject(at time: TimeInterval) -> Bool {
         guard let behind = behindSubject, !behind.cards.isEmpty, trackEnabled(.captions),
-              let card = card(at: time + captionTimingOffset) else { return false }
+              let card = card(at: time - captionTimingOffset) else { return false }
         return behind.cards.contains(card.id)
     }
 

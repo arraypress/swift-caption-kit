@@ -154,10 +154,12 @@ struct LyricEffectTests {
         var early = makeDocument { $0.highlightMode = .karaoke }
         early.captionTimingOffset = -0.1
         let unshifted = makeDocument { $0.highlightMode = .karaoke }
-        // Offset -100ms at t means the captions look like t+(-0.1)... i.e.
-        // rendering the offset document at 0.6 equals the plain one at 0.5.
-        let offsetRender = try #require(CaptionRenderer.renderOverlay(document: early, at: 0.6))
-        let plainRender = try #require(CaptionRenderer.renderOverlay(document: unshifted, at: 0.5))
+        // An offset of -100 ms shows each caption 0.1 s EARLY: the offset
+        // document at 0.5 draws what the plain one draws at 0.6. (Until
+        // 0.8.0 the sign was the other way round, against this field's
+        // documentation; `caption check` measured it.)
+        let offsetRender = try #require(CaptionRenderer.renderOverlay(document: early, at: 0.5))
+        let plainRender = try #require(CaptionRenderer.renderOverlay(document: unshifted, at: 0.6))
         #expect(pixels(offsetRender) == pixels(plainRender))
     }
 }

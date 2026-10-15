@@ -52,7 +52,7 @@ public enum SubjectCoverage {
         let masker = SubjectMasker()
         var cards: [Card] = []
         for card in document.cards {
-            let times = moments(of: card).map { $0 - document.captionTimingOffset }
+            let times = moments(of: card).map { $0 + document.captionTimingOffset }
             let frames = await CanvasFrames.frames(for: document, at: times, width: 360)
             var worst = [Double](repeating: frames.isEmpty ? 1 : 0, count: card.words.count)
             for frame in frames {

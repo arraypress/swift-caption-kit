@@ -99,20 +99,23 @@ private func alphaBounds(of image: CGImage) -> CGRect? {
     @Test func platformZonesClearTheirOwnInterface() {
         for platform in Platform.allCases {
             let safe = PlatformZones.safeRect(for: platform)
-            #expect(safe.width > 0.5 && safe.height > 0.5)
+            #expect(safe.width >= 0.5 && safe.height >= 0.5 - 1e-9)
             for zone in PlatformZones.zones(for: platform) {
                 #expect(safe.intersection(zone.rect).width * safe.intersection(zone.rect).height < 1e-9 || zone.rect.isEmpty,
                         "\(platform) \(zone.label)")
             }
         }
         let all = PlatformZones.safeRectForAll
-        #expect(abs(all.minX) < 1e-9 && abs(all.minY - 0.10) < 1e-9 && abs(all.maxX - 0.86) < 1e-9 && abs(all.maxY - 0.80) < 1e-9)
+        // The official numbers: TikTok's side margin and rail, Shorts' top, Reels'/Shorts' bottom.
+        #expect(abs(all.minX - 0.111) < 1e-9 && abs(all.minY - 0.15) < 1e-9 && abs(all.maxX - 0.722) < 1e-9 && abs(all.maxY - 0.65) < 1e-9)
     }
 
     @Test func theRendererDrawsTheTitleWhereHookRectSaysAndOnlyWhileVisible() {
         let config = RenderConfig(width: 540, height: 960)
         var style = HookTemplates.style(of: HookTemplates.named("boxed")!)
-        style.position = NormalizedPoint(x: 0.5, y: 0.3)
+        // Centred in the safe zone, as HookPlacement centres it (TikTok's
+        // margin and rail make the zone lean left of the frame's middle).
+        style.position = NormalizedPoint(x: HookBuilder.safeRect(config: config, platform: nil).midX, y: 0.3)
         var hook = HookTitle(text: "Three things nobody tells you", start: 0, end: 2, style: style,
                              safeRect: HookBuilder.safeRect(config: config, platform: nil),
                              lineBreaks: HookText.lineBreaks(for: ["Three", "things", "nobody", "tells", "you"]))
@@ -142,11 +145,28 @@ private func alphaBounds(of image: CGImage) -> CGRect? {
 
     @Test func safeRectFollowsTheCanvasShape() {
         let vertical = HookBuilder.safeRect(config: .reel, platform: nil)
-        #expect(abs(vertical.minX - 0.05) < 1e-9 && abs(vertical.maxX - 0.86) < 1e-9)
-        #expect(abs(vertical.minY - 0.10) < 1e-9 && abs(vertical.maxY - 0.80) < 1e-9)
+        #expect(abs(vertical.minX - 0.111) < 1e-9 && abs(vertical.maxX - 0.722) < 1e-9)
+        #expect(abs(vertical.minY - 0.15) < 1e-9 && abs(vertical.maxY - 0.65) < 1e-9)
         let wide = HookBuilder.safeRect(config: .landscape, platform: nil)
         #expect(abs(wide.minX - 0.05) < 1e-9 && abs(wide.maxY - 0.92) < 1e-9)
         let tiktok = HookBuilder.safeRect(config: .reel, platform: .tiktok)
-        #expect(abs(tiktok.maxY - 0.80) < 1e-9)
+        #expect(abs(tiktok.maxY - 0.656) < 1e-9 && abs(tiktok.minY - 0.125) < 1e-9)
+        let youtube = HookBuilder.safeRect(config: .landscape, platform: .youtube)
+        #expect(abs(youtube.maxY - 0.892) < 1e-9 && abs(youtube.minY - 0.10) < 1e-9)
+    }
+
+    @Test func platformMarginsWidenTheCaptionSafeArea() {
+        let tiktok = PlatformZones.renderConfig(.reel, clearOf: .tiktok)
+        #expect(abs(tiktok.safeAreaTop - 0.125) < 1e-9 && abs(tiktok.safeAreaBottom - 0.344) < 1e-6)
+        #expect(abs(tiktok.safeAreaLeft - 0.111) < 1e-9 && abs(tiktok.safeAreaRight - 0.278) < 1e-6)
+        let reels = PlatformZones.renderConfig(.reel, clearOf: .reel)
+        #expect(abs(reels.safeAreaBottom - 0.35) < 1e-6 && abs(reels.safeAreaRight - 0.21) < 1e-6)
+        let shorts = PlatformZones.renderConfig(.reel, clearOf: .shorts)
+        #expect(abs(shorts.safeAreaTop - 0.15) < 1e-9 && abs(shorts.safeAreaRight - 0.178) < 1e-6)
+        // The canvas's own margin stays when it is the larger.
+        let youtube = PlatformZones.renderConfig(.landscape, clearOf: .youtube)
+        #expect(abs(youtube.safeAreaTop - 0.10) < 1e-9 && abs(youtube.safeAreaBottom - 0.108) < 1e-6)
+        // A platform of the other shape leaves the canvas alone.
+        #expect(PlatformZones.renderConfig(.landscape, clearOf: .tiktok) == .landscape)
     }
 }

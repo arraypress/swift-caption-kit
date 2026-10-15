@@ -19,14 +19,15 @@ Studio app (both retired, their history bundled; the old engine's repository
 is `swift-caption-kit-archived`). What came across is what works with no one
 watching — automatic emphasis and emoji, a hook title, captions behind the
 speaker where they stay legible, translation re-timing, the platform safe
-zones. What stayed behind needs an eye or is not a caption: stickers, B-roll,
-music and sound effects, colour grading, face retouching, the generative AI
-passes, the editor UI.
+zones — and, since 0.8.0, stickers placed by rule rather than by hand. What
+stayed behind needs an eye or is not a caption: hand-placed stickers and
+motion paths, B-roll, music and sound effects, colour grading, face
+retouching, the generative AI passes, the editor UI.
 
 ## Install
 
 ```swift
-.package(url: "https://github.com/arraypress/swift-caption-kit.git", from: "0.7.0")
+.package(url: "https://github.com/arraypress/swift-caption-kit.git", from: "0.8.0")
 // .product(name: "CaptionKit", package: "swift-caption-kit")
 ```
 
@@ -329,14 +330,56 @@ to Spanish, `caption render --words`): 31 English words in 5 captions became
 33 Spanish words; all 5 captions kept their exact start and end, text and
 order, and the words ran back to back.
 
-### Platform safe zones — `Platform`, `PlatformZones`
+### Platform safe zones — `Platform`, `PlatformZones`, `InkFit`
 
-Which parts of a 9:16 frame Instagram stories and reels, TikTok and YouTube
-Shorts cover with their own buttons, and the rectangle left clear
-(`PlatformZones.safeRect(for:)`, or `safeRectForAll` for every platform at
-once). The numbers came from the Caption Studio app's pre-publish overlay:
-measured off the apps' layouts, rounded to whole percents. The hook title uses
-them today.
+Which parts of the frame TikTok, Instagram Reels, YouTube Shorts and the
+16:9 YouTube player cover with their own interface, and the rectangle left
+clear (`PlatformZones.safeRect(for:)`; `safeRectForAll` for every 9:16
+platform at once). Every number has a source, in `PlatformZones.swift`:
+TikTok's official In-Feed safe-zone template (top 12.5%, bottom 34.4%, sides
+11.1%, the rail 27.8% wide from y 43.75%), Meta's Reels guide (14% / 35% / 6%
+and a 21% × 40% button notch), Google's Shorts safe zone (288 / 672 / 48 /
+192 px of 1080×1920), and for 16:9 YouTube the player's controls (0.108 of a
+720p player) with EBU R 95's 5% sides. All three vertical figures are the
+platforms' guidance for ads — the only guidance they publish — so they are
+the conservative bound for a post. (Until 0.8.0 these were unsourced numbers
+carried over from the retired studio app, and let captions run down to 80–83%
+of the height, where every official source stops at 65%.)
+
+`PlatformZones.renderConfig(_:clearOf:)` widens a canvas's caption safe area
+to a platform's. The layout keeps the text block inside it, but a pill's
+padding or an outline reaches past; `InkFit` measures what each card actually
+draws and pulls the margins in until the ink fits (on a 9:16 clip, 1 of 1,032
+cards across all 61 styles and three platforms still reaches past: one
+130-point word).
+
+### Measured instead of looked at — `CaptionContrast`, `FootageStage`, `FootageCheck`, `SettledMoment`
+
+- `CaptionContrast` — the WCAG ratio between a caption's letters and the
+  pixels touching them (out to 3 reference points: an outline or a box counts,
+  bare letters against bright footage do not), at each sampled card's settled
+  moment; `scrim(for:)` picks the weakest black or white gradient (40–85%)
+  that lifts the low quartile to 3:1, or none when none helps.
+- `FootageStage` — one source frame with the document's footage effects in
+  the exporter's stage order (face cover, the camera path and automatic zoom,
+  mirror, background blur, scrim), for previews and measurements.
+- `FootageCheck` — whether each footage effect did what it says: detail left
+  outside and inside the person under a background blur, in the face under a
+  face cover (and whether Vision still finds a face), a mirror against the
+  flipped frame, a border's and a letterbox's solid share, when the first
+  caption appears under a timing offset, how many words a zoom punch lands on.
+- `SettledMoment` — the first moment a card has finished arriving (every
+  entrance, letter cascade and draw-on done, before any exit): the frame a
+  sample should show.
+- `FillerHiding` — fillers out of the captions, left in the sound.
+- `HookText.repeatsCaption` — an automatic hook that would only repeat the
+  first caption is left out.
+- `FaceTrack.track(videoURL:canvas:)` returns the crop offset that centres the
+  face in a crop of that shape (`FaceTrack.pan`); it used to return the face's
+  centre, which `Reframe` reads as a pan across the overflow — a speaker
+  walking across a 16:9 frame sat 28% off-centre in a 9:16 crop; now 2.4%.
+- `CaptionDocument.captionTimingOffset` now runs the way it is documented:
+  negative shows captions early. It ran the other way until 0.8.0.
 
 ### Stickers, placed by rule — `StickerPlacer`, `StickerCheck`
 

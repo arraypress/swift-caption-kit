@@ -59,7 +59,7 @@ public enum CaptionRenderer {
             }
             // The timing offset shifts CAPTIONS only (negative = slightly early,
             // the "snappy" trick); stickers and the progress bar stay absolute.
-            let captionTime = time + document.captionTimingOffset
+            let captionTime = time - document.captionTimingOffset
             if document.trackEnabled(.captions), let card = document.card(at: captionTime) {
                 drawCard(card, document: document, in: context, at: captionTime)
             }
@@ -405,7 +405,7 @@ public enum CaptionRenderer {
 
         var hasher = Hasher()
         hasher.combine("overlay")
-        let captionTime = time + document.captionTimingOffset
+        let captionTime = time - document.captionTimingOffset
         if document.trackEnabled(.captions), let card = document.card(at: captionTime) {
             let style = document.resolvedStyle(for: card)
             if let layout = CaptionLayout.layout(card: card, style: style, config: document.renderConfig) {
@@ -476,7 +476,7 @@ public enum CaptionRenderer {
     /// the caption. `nil` when no caption is visible.
     public static func captionBlockRect(document: CaptionDocument, at time: TimeInterval) -> CGRect? {
         guard document.trackEnabled(.captions) else { return nil }
-        let time = time + document.captionTimingOffset
+        let time = time - document.captionTimingOffset
         guard let card = document.card(at: time) else { return nil }
         let style = document.resolvedStyle(for: card)
         guard let layout = CaptionLayout.layout(card: card, style: style, config: document.renderConfig) else { return nil }
@@ -497,7 +497,7 @@ public enum CaptionRenderer {
         document: CaptionDocument,
         at time: TimeInterval
     ) -> (cardID: UUID, rects: [(index: Int, rect: CGRect)])? {
-        let time = time + document.captionTimingOffset
+        let time = time - document.captionTimingOffset
         guard let card = document.card(at: time) else { return nil }
         let style = document.resolvedStyle(for: card)
         guard let layout = CaptionLayout.layout(card: card, style: style, config: document.renderConfig) else { return nil }

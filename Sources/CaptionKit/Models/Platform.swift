@@ -28,10 +28,20 @@ public enum Platform: String, Codable, CaseIterable, Sendable {
 
     /// A YouTube short.
     case shorts
+
+    /// A regular YouTube video — 16:9, under the player's own controls.
+    case youtube
+
+    /// The platforms that show video 9:16, full screen.
+    public static let vertical: [Platform] = [.story, .reel, .tiktok, .shorts]
+
+    /// Whether the platform's frame is 9:16 (else 16:9).
+    public var isVertical: Bool { self != .youtube }
 }
 
 /// One region of the frame a platform's interface occupies, normalized `0…1`
-/// on a 9:16 canvas with a **top-left** origin.
+/// on the platform's canvas (9:16, or 16:9 for ``Platform/youtube``) with a
+/// **top-left** origin.
 public struct ScreenZone: Codable, Equatable, Sendable {
 
     /// The covered rectangle.

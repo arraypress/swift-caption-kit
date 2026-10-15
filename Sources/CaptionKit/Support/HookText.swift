@@ -35,6 +35,19 @@ public enum HookText {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Whether a hook titled `text` would only repeat the first caption: its
+    /// words are the caption's opening words (letters and digits compared,
+    /// case ignored). On an unpunctuated transcript `auto` falls back to the
+    /// first card, and a title saying what the caption under it is already
+    /// saying adds nothing; a first sentence that runs past the first card
+    /// does not repeat it.
+    public static func repeatsCaption(_ text: String, firstCard: CaptionCard?) -> Bool {
+        guard let card = firstCard else { return false }
+        let hook = TextLegibility.words(in: text)
+        let caption = TextLegibility.words(in: card.text)
+        return !hook.isEmpty && hook.count <= caption.count && Array(caption.prefix(hook.count)) == hook
+    }
+
     /// Line breaks for a title of `words`: as few lines as keep each under
     /// `maximumCharacters`, split where the lines come out most even.
     public static func lineBreaks(for words: [String], maximumCharacters: Int = 16) -> [Int] {
