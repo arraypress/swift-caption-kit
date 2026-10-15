@@ -50,6 +50,7 @@ public enum CaptionGrouper {
                 let pause = word.start - last.end
                 if last.endsSentence
                     || pause >= rules.pauseThreshold
+                    || (rules.speakerBreak == .card && speakerChanges(from: last, to: word))
                     || !fits(current + [word], rules: rules) {
                     flush()
                 }
@@ -96,7 +97,9 @@ public enum CaptionGrouper {
         for (index, word) in words.enumerated() {
             let length = word.text.count
             let joined = lineWords == 0 ? length : lineChars + 1 + length
-            if lineWords > 0 && (lineWords + 1 > rules.maxWordsPerLine || joined > rules.maxCharactersPerLine) {
+            // Under `speakerBreak: line` a new speaker always takes a new line.
+            let newSpeaker = rules.speakerBreak == .line && index > 0 && speakerChanges(from: words[index - 1], to: word)
+            if lineWords > 0 && (newSpeaker || lineWords + 1 > rules.maxWordsPerLine || joined > rules.maxCharactersPerLine) {
                 ranges.append(lineStart..<index)
                 lineStart = index
                 lineChars = length
@@ -121,6 +124,8 @@ public enum CaptionGrouper {
               let previous = ranges.dropLast().last, previous.count >= 2 else { return }
 
         let moved = previous.upperBound - 1
+        // Never carry a word across a change of speaker.
+        if rules.speakerBreak != nil, speakerChanges(from: words[moved], to: words[last.lowerBound]) { return }
         // The rebalanced last line must still respect the character limit;
         // two words is always within any sane word limit if chars fit.
         let newLastChars = words[moved].text.count + 1 + words[last.lowerBound].text.count
@@ -128,6 +133,13 @@ public enum CaptionGrouper {
 
         ranges[ranges.count - 2] = previous.lowerBound..<moved
         ranges[ranges.count - 1] = moved..<last.upperBound
+    }
+
+    /// Whether `next` is said by someone other than `previous`. Words with
+    /// no speaker are nobody in particular: they never mark a change.
+    static func speakerChanges(from previous: Word, to next: Word) -> Bool {
+        guard let a = previous.speaker, let b = next.speaker else { return false }
+        return a != b
     }
 
     // MARK: - Dwell

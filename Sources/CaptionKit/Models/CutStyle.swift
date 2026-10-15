@@ -29,19 +29,19 @@ public enum CutStyle: String, Codable, CaseIterable, Sendable {
     case none
 
     /// A quick dip through black across the cut.
-    case dipToBlack
+    case dipToBlack = "dip-to-black"
 
     /// A quick dip through white across the cut.
-    case dipToWhite
+    case dipToWhite = "dip-to-white"
 
     /// A subtle zoom punch-in that relaxes after the cut.
-    case punchIn
+    case punchIn = "punch-in"
 
     /// A horizontal motion-blur streak across the cut.
-    case whipPan
+    case whipPan = "whip-pan"
 
     /// A radial zoom-blur burst across the cut.
-    case zoomBlur
+    case zoomBlur = "zoom-blur"
 
     /// An RGB channel-split glitch across the cut.
     case glitch

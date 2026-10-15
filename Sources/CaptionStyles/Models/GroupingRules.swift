@@ -35,6 +35,10 @@ public struct GroupingRules: Codable, Equatable, Sendable {
     /// for the next card.
     public var maxHoldAfterLastWord: TimeInterval
 
+    /// What a change of speaker does: start a card, start a line, or (`nil`)
+    /// nothing — speakers are ignored.
+    public var speakerBreak: SpeakerBreak? = nil
+
     public init(
         maxLinesPerCard: Int = 2,
         maxWordsPerLine: Int = 4,

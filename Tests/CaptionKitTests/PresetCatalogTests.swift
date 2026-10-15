@@ -22,7 +22,7 @@ struct PresetCatalogTests {
     @Test("The built-in catalogue has no problems")
     func noProblems() {
         #expect(StylePresets.problems == [])
-        #expect(StylePresets.catalog.count == 50)
+        #expect(StylePresets.catalog.count == 61)
         #expect(StylePresets.all.count == StylePresets.catalog.count)
     }
 
@@ -33,8 +33,8 @@ struct PresetCatalogTests {
 
     @Test("An unknown name suggests a close one")
     func unknownName() {
-        #expect(throws: StyleError.unknownStyle("hormozzi", suggestions: ["hormozi"])) {
-            try StylePresets.require("hormozzi")
+        #expect(throws: StyleError.unknownStyle("colorbax", suggestions: ["color-box"])) {
+            try StylePresets.require("colorbax")
         }
     }
 
@@ -49,9 +49,9 @@ struct PresetCatalogTests {
 
     @Test("A colours slot takes a comma list")
     func colorsSlot() throws {
-        let style = try StylePresets.style(named: "hormozi", vars: ["accent": "#00E676"])
+        let style = try StylePresets.style(named: "color-box", vars: ["accent": "#00E676"])
         #expect(style.wordColorPalette == [StyleColor(hex: "#00E676")!])
-        let two = try StylePresets.style(named: "hormozi", vars: ["accent": "green, #FF4136"])
+        let two = try StylePresets.style(named: "color-box", vars: ["accent": "green, #FF4136"])
         #expect(two.wordColorPalette == [.green, StyleColor(hex: "#FF4136")!])
     }
 
@@ -75,7 +75,7 @@ struct PresetCatalogTests {
             try StylePresets.style(named: "karaoke", vars: ["accent": "#GGG"])
         }
         #expect(throws: StyleError.badColor(slot: "accent", value: "green,nope")) {
-            try StylePresets.style(named: "hormozi", vars: ["accent": "green,nope"])
+            try StylePresets.style(named: "color-box", vars: ["accent": "green,nope"])
         }
     }
 

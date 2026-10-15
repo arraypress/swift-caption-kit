@@ -40,15 +40,20 @@ construction. **Never add a second rendering path.**
 
 ## What's in the box
 
-**Styling** — 50 presets (`StylePresets`), heavy/hollow text, stroke
-layers, drop and hard shadows, glow, gradient fills, image fills, synthetic
-slant, scanlines, chromatic aberration, per-line / whole-block / per-word
-background pills, and block rotation.
+**Styling** — 61 presets (`StylePresets`), heavy/hollow text, stroke
+layers, drop and hard shadows, 3-D extrusion, glow, gradient fills, image
+fills, synthetic slant, scanlines, chromatic aberration, per-line /
+whole-block / per-word background pills, block rotation and a seeded
+per-card tilt, stacked lines sized to one width, speaker colours, names and
+dashes, and a second-language line.
 
-**Animation** — 25 word entrances (`bounceIn`, `popOn`, `stomp`, `typewriter`,
-`whipIn`, `smearIn`, `spiralIn`…), 6 card entrances, and five spoken-word
-highlight modes: `karaoke`, `activeWord`, `activeBox`, `activeUnderline`,
-`none`. All pure functions of time.
+**Animation** — 25 word entrances (`bounce-in`, `pop-on`, `stomp`,
+`typewriter`, `whip-in`, `smear-in`, `spiral-in`…), 7 card entrances
+(`slide-in-left` among them), a weight ramp that can hold, and six
+spoken-word highlight modes: `karaoke`, `active-word`, `active-box`,
+`active-underline`, `spotlight`, `none` — which can sit on the card's key
+words instead of following the voice. All pure functions of time. Every
+value is kebab-case, like the preset names.
 
 **Custom styles** — `CaptionStyle` is `Codable`, so a style is a JSON file.
 Nothing extra to learn, and no format to invent.
@@ -56,7 +61,7 @@ Nothing extra to learn, and no format to invent.
 ## The presets are data: `CaptionStyles`
 
 The style model (`CaptionStyle`, `WordStyle`, `StyleColor`, `GroupingRules`)
-and the 50 presets live in their own target, `CaptionStyles`, which
+and the 61 presets live in their own target, `CaptionStyles`, which
 `CaptionKit` re-exports. It stays a separate target so the style data builds
 without AVFoundation or Vision, but it is not a separate product any more: the
 only other engine that imported it on its own is archived, and one product is
@@ -69,24 +74,24 @@ symlink. Each entry lists only what differs from `CaptionStyle()`, colours as
 
 ```json
 {
-  "name": "hormozi", "title": "Hormozi", "featured": true,
+  "name": "color-box", "title": "Color Box", "featured": true,
   "slots": [{"name": "accent", "kind": "colors", "default": "#2ECC40,#FFDC00,#FF4136,#B10DC9"}],
-  "style": {"fontSize": 88, "fontWeight": "black", "highlightMode": "activeBox", "wordColorPalette": "{accent}", …}
+  "style": {"fontSize": 88, "fontWeight": "black", "highlightMode": "active-box", "wordColorPalette": "{accent}", …}
 }
 ```
 
 ```swift
 import CaptionStyles
 
-let style = try StylePresets.style(named: "hormozi", vars: ["accent": "#00E676"])
+let style = try StylePresets.style(named: "color-box", vars: ["accent": "#00E676"])
 StylePresets.named("Clean Pop")?.name          // "clean-pop" — case and separators forgiven
 StylePresets.catalog.first?.styleSlots         // RecipeKit `StyleSlot`s, for `--var`
 try StyleJSON.style(from: ["fontSize": .number(90), "textColor": .string("pink")])  // a partial style, made whole
 ```
 
-Names are kebab-case. Slots: `accent` (the spoken word, 23 presets), `color`
-(the text, 8), `from`/`to` (gradient stops, 6), `palette` (2), `tile` and
-`bubble` (1 each); 11 presets have none. A test parses the catalogue with
+Names are kebab-case. Slots: `accent` (the spoken word, 28 presets), `color`
+(the text, 9), `from`/`to` (gradient stops, 6), `palette` (3), and `tile`,
+`bubble`, `band`, `speakers`, `depth`, `marker` (1 each); 13 presets have none. A test parses the catalogue with
 RecipeKit's `StyleCatalogs` rules and requires no problems: kebab-case unique
 names, every key a `CaptionStyle` field (`StyleSchema`, read off the types, so a
 misspelt `"fontSzie"` is caught rather than ignored), every marker a slot and
@@ -96,6 +101,28 @@ decodes.
 **Measured:** all 50 presets, decoded from the JSON, encode byte-identical to
 the Swift presets they replaced (every field, every Double), as do the
 featured flags, grouping hints and word looks.
+
+### The 2026-10 looks
+
+Eleven presets came with the pieces they needed, each piece measured by a test
+rather than looked at (`NewStyleTests`):
+
+| Preset | What it adds |
+|---|---|
+| `weight-sweep` | `weightRampHolds`: a word already said keeps the ramp's target weight; spaces are reserved at the heavy width so nothing collides (ink of a said word ≥ 1.25× the released ramp) |
+| `subtitle` | grouping `speakerBreak: line` (a new speaker takes a new line, two turns a card) and `speakerDash` (a dash opens each line only when two speakers share the card) |
+| `lower-third` | `speakerLabel` mode `above` — the name in bold inside the band — and the `slide-in-left` card entrance |
+| `two-speaker` | `speakerColors` on the style (a document's own `speakerColors` win) and a `speakerLabel` chip |
+| `stacked` | `fitLinesToWidth`: each line scaled to the widest line, up to 2.4× (widths equal within 3 %) |
+| `extruded`, `marker`, `glitch` | data only: `extrude`; Marker Felt with the typewriter draw-on; Menlo with RGB split, scanlines and a shiver |
+| `bilingual` | `secondaryLine` over the document's `secondaryWords` — the words whose midpoint falls in a card's span, on one line above it |
+| `soft-highlight` | `textTransform: sentence`, `activeBoxShape: marker` and `highlightKeyWords` (the emphasised words wear the highlight; with none, the voice leads) |
+| `tilted-bounce` | `cardTilt` (a seeded per-card angle, within the bound, deterministic) and `activeWordPalette` (the spoken word cycles colours) |
+
+Speaker looks degrade cleanly: words without a speaker draw as a plain
+caption. `hormozi` and `beast` are now `color-box` and `thumbnail`. Every
+existing preset draws byte-identical overlays to 0.7.0 across 2,400 renders
+(50 presets × 12 times × 9:16 and 16:9 × plain and speaker-and-emphasis words).
 
 ## The engine underneath: `CaptionCore`
 
@@ -269,13 +296,13 @@ taken, and a card goes behind only if its worst word is covered no more than
 | 25–30% | 447 | 8.3% |
 | 50–100% | 13,663 | 0.1% |
 
-Six presets (karaoke, hormozi, boxed, clean-pop, beast, minimal), twelve
+Six presets (karaoke, color-box, boxed, clean-pop, thumbnail, minimal), twelve
 sentences, twenty heights, over four generated portraits; only the 26,181
 words text recognition read with the caption in front are counted, so a word
 lost behind is the person's doing. The knee is at 5%: by style, words covered
 up to 5% read back 96–99%, up to 10% 92–96%, up to 15% 88–93%.
 
-End to end on the fixture (hormozi, two words a card, high in the frame so the
+End to end on the fixture (color-box, two words a card, high in the frame so the
 speaker's head crosses the captions as the shot slowly zooms): 7 of 16 cards
 went behind (worst word 2.4% covered) and 9 stayed in front (5.4–46%). Read
 back off frames decoded from the rendered video, the behind cards gave 14 of

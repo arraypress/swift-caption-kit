@@ -125,11 +125,11 @@ public enum CaptionRenderer {
 
     /// The whole-block entrance transform at `time` — shared by the drawing
     /// and the overlay-cache signature so they can never disagree.
-    private static func cardAnimation(card: CaptionCard, style: CaptionStyle, layout: CardLayout, at time: TimeInterval) -> (alpha: Double, dy: CGFloat, scale: CGFloat) {
-        guard style.cardAnimation != .none else { return (1, 0, 1) }
+    private static func cardAnimation(card: CaptionCard, style: CaptionStyle, layout: CardLayout, at time: TimeInterval) -> (alpha: Double, dx: CGFloat, dy: CGFloat, scale: CGFloat) {
+        guard style.cardAnimation != .none else { return (1, 0, 0, 1) }
         let p = Easing.progress(time, from: card.start, duration: max(0.01, style.animationDuration) * 1.5)
         let eased = Easing.easeOutCubic(p)
-        var alpha: Double = 1, scale: CGFloat = 1, dy: CGFloat = 0
+        var alpha: Double = 1, scale: CGFloat = 1, dy: CGFloat = 0, dx: CGFloat = 0
         switch style.cardAnimation {
         case .none: break
         case .fadeIn: alpha = eased
@@ -137,8 +137,9 @@ public enum CaptionRenderer {
         case .slideDown: alpha = eased; dy = (1 - eased) * 0.6 * layout.lineAdvance
         case .popOn: alpha = min(1, p * 3); scale = CGFloat(max(0.02, Easing.easeOutBack(p)))
         case .stomp: alpha = min(1, p * 5); scale = 1 + 1.2 * (1 - eased)
+        case .slideInLeft: alpha = min(1, p * 2.5); dx = -(1 - eased) * (layout.blockRect.maxX + layout.fontPixelSize)
         }
-        return (alpha, dy, scale)
+        return (alpha, dx, dy, scale)
     }
 
     private static func drawCard(_ card: CaptionCard, document: CaptionDocument, in context: CGContext, at time: TimeInterval) {
@@ -163,6 +164,8 @@ public enum CaptionRenderer {
         // Whole-block entrance, on top of any per-word animation. (Computed
         // before the shadow so the baked-shadow key can include it.)
         let anim = cardAnimation(card: card, style: style, layout: layout, at: time)
+        // The speaker's name and a second-language line, drawn with the card.
+        let extras = cardExtras(card: card, style: style, layout: layout, document: document)
 
         // A crawling circle warp spins with absolute time; every consumer of
         // the warped geometry below shares this one phase.
@@ -185,7 +188,7 @@ public enum CaptionRenderer {
         // implicit path stays as the fallback.
         if style.knockoutPlate == nil, let shadow = style.shadow {
             if let baked = cardShadow(card: card, style: style, layout: layout,
-                                      states: states, anim: anim, shadow: shadow, phase: phase, time: time) {
+                                      states: states, anim: anim, extras: extras, shadow: shadow, phase: phase, time: time) {
                 // The implicit shadow's strength scales with the group alpha.
                 context.saveGState()
                 context.setAlpha(style.opacity * CGFloat(anim.alpha))
@@ -204,15 +207,16 @@ public enum CaptionRenderer {
         }
         // Whole-block rotation: the tilted-caption look. CG is y-up, so a
         // screen-clockwise rotation is a negative CG angle.
-        if let rotation = style.blockRotation, rotation != 0 {
+        let rotation = blockRotation(for: card, style: style)
+        if rotation != 0 {
             let center = CGPoint(x: layout.blockRect.midX, y: layout.blockRect.midY)
             context.translateBy(x: center.x, y: center.y)
             context.rotate(by: -rotation)
             context.translateBy(x: -center.x, y: -center.y)
         }
-        if anim.scale != 1 || anim.dy != 0 {
+        if anim.scale != 1 || anim.dy != 0 || anim.dx != 0 {
             let center = CGPoint(x: layout.blockRect.midX, y: layout.blockRect.midY)
-            context.translateBy(x: center.x, y: center.y + anim.dy)
+            context.translateBy(x: center.x + anim.dx, y: center.y + anim.dy)
             context.scaleBy(x: anim.scale, y: anim.scale)
             context.translateBy(x: -center.x, y: -center.y)
         }
@@ -229,7 +233,8 @@ public enum CaptionRenderer {
             )
         } else {
             drawBackground(card: card, style: style, layout: layout, states: states,
-                           in: context, phase: phase, elapsed: time - card.start)
+                           in: context, phase: phase, elapsed: time - card.start, extraRect: extras.backgroundRect)
+            drawExtras(extras, in: context)
 
             for slot in layout.words {
                 let state = states[slot.index]
@@ -407,7 +412,7 @@ public enum CaptionRenderer {
                 }
                 hasher.combine(states)
                 let anim = cardAnimation(card: card, style: style, layout: layout, at: captionTime)
-                hasher.combine(anim.alpha); hasher.combine(anim.dy); hasher.combine(anim.scale)
+                hasher.combine(anim.alpha); hasher.combine(anim.dx); hasher.combine(anim.dy); hasher.combine(anim.scale)
                 // A crawling ring changes pixels with no word-state change.
                 let phase = warpPhase(style.textWarp, at: captionTime)
                 if phase != 0 { hasher.combine(Int((phase * 3600).rounded())) }
@@ -431,7 +436,7 @@ public enum CaptionRenderer {
                     wordState(index: $0, card: card, style: hook.style, document: hookDocument, layout: layout, time: time, active: active)
                 })
                 let anim = cardAnimation(card: card, style: hook.style, layout: layout, at: time)
-                hasher.combine(anim.alpha); hasher.combine(anim.dy); hasher.combine(anim.scale)
+                hasher.combine(anim.alpha); hasher.combine(anim.dx); hasher.combine(anim.dy); hasher.combine(anim.scale)
             }
         }
         return hasher.finalize()
@@ -473,6 +478,7 @@ public enum CaptionRenderer {
         guard let layout = CaptionLayout.layout(card: card, style: style, config: document.renderConfig) else { return nil }
         let size = document.renderConfig.size
         let rect = displayBlockRect(layout, warp: style.textWarp, phase: warpPhase(style.textWarp, at: time))
+            .union(cardExtras(card: card, style: style, layout: layout, document: document).bounds)
         return CGRect(
             x: rect.minX / size.width,
             y: 1 - rect.maxY / size.height,
@@ -632,13 +638,14 @@ public enum CaptionRenderer {
 
         // Multi-color words: rotate the palette across the card's words.
         // In Highlight Box mode the palette drives the BOX colors instead —
-        // text stays flat (the Hormozi look), never skittles.
+        // text stays flat (the colour-box look), never skittles.
         if let palette = style.wordColorPalette, !palette.isEmpty, style.highlightMode != .activeBox {
             state.color = palette[index % palette.count]
         }
 
-        // Per-speaker colors (diarized interviews/podcasts).
-        if let speakerColors = document.speakerColors, !speakerColors.isEmpty,
+        // Per-speaker colors (diarized interviews/podcasts): the document's,
+        // else the style's own speaker palette.
+        if let speakerColors = speakerPalette(document: document, style: style),
            let speaker = word.speaker, speaker >= 0 {
             state.color = speakerColors[speaker % speakerColors.count]
         }
@@ -687,12 +694,27 @@ public enum CaptionRenderer {
 
         // Spoken-word emphasis (computed once per card by the caller — it was
         // re-scanned per word).
-        let highlightColor = style.activeWordColor ?? style.textColor
+        var highlightColor = style.activeWordColor ?? style.textColor
+        // A colour-cycling highlight: each word the next colour, from a point
+        // the card seeds so consecutive cards do not all open on the same one.
+        if let palette = style.activeWordPalette, !palette.isEmpty {
+            let offset = Int(SeededRandom.unit(Int((card.start * 1000).rounded()), 17) * Double(palette.count))
+            highlightColor = palette[(index + offset) % palette.count]
+        }
+        // Key words, when the style highlights them: the card's emphasised
+        // words wear the highlight for the whole card; with none, the voice leads.
+        let lit: Bool
+        if style.highlightKeyWords == true {
+            let keyWords = card.words.indices.filter { card.words[$0].style?.color != nil }
+            lit = keyWords.isEmpty ? index == active : keyWords.contains(index)
+        } else {
+            lit = index == active
+        }
         switch style.highlightMode {
         case .none:
             break
         case .activeWord:
-            if index == active {
+            if lit {
                 state.color = highlightColor
             }
         case .karaoke:
@@ -704,8 +726,8 @@ public enum CaptionRenderer {
                 state.karaokeColor = highlightColor
             }
         case .activeBox:
-            if index == active {
-                // The Hormozi rotation: with a word palette set, the box
+            if lit {
+                // The colour-box rotation: with a word palette set, the box
                 // color cycles per word instead of staying fixed.
                 if let palette = style.wordColorPalette, !palette.isEmpty {
                     state.boxColor = palette[index % palette.count]
@@ -721,7 +743,7 @@ public enum CaptionRenderer {
                 }
             }
         case .activeUnderline:
-            if index == active {
+            if lit {
                 state.underlineColor = style.activeWordColor ?? .yellow
             }
         case .spotlight:
@@ -755,6 +777,11 @@ public enum CaptionRenderer {
            index == active, word.duration > 0, style.mixedLetters == nil {
             let t = Easing.clamp01((time - word.start) / word.duration)
             state.weightStep = Int((t * 5).rounded())
+        } else if style.weightRampHolds == true, style.activeWordWeightRamp != nil, style.highlightMode != .karaoke,
+                  style.mixedLetters == nil, index != active,
+                  word.end <= time || (active.map { index < $0 } ?? false) {
+            // The weight sweep: a word already said stays at the target weight.
+            state.weightStep = 5
         }
 
         // Hue-drifting gradients repaint on a quantized clock; static
@@ -797,7 +824,8 @@ public enum CaptionRenderer {
         states: [WordState],
         in context: CGContext,
         phase: CGFloat = 0,
-        elapsed: TimeInterval = .greatestFiniteMagnitude
+        elapsed: TimeInterval = .greatestFiniteMagnitude,
+        extraRect: CGRect? = nil
     ) {
         guard let background = style.background else { return }
         let padH = background.paddingHorizontal * layout.referenceScale
@@ -876,7 +904,9 @@ public enum CaptionRenderer {
                                color: background.color, padV: padV, in: context)
             }
         case .block:
-            paintRoundedRect(layout.blockRect.insetBy(dx: -padH, dy: -padV), radius: radius)
+            // A name over the text (a lower third) sits inside the same band.
+            let block = extraRect.map { layout.blockRect.union($0) } ?? layout.blockRect
+            paintRoundedRect(block.insetBy(dx: -padH, dy: -padV), radius: radius)
         case .perLine:
             for line in layout.lines {
                 // Skip pills for lines whose words haven't appeared yet.
@@ -1179,13 +1209,15 @@ public enum CaptionRenderer {
             let base = overrides?.fontWeight ?? style.fontWeight
             let t = CGFloat(step) / 5
             let trait = base.traitValue + (target.traitValue - base.traitValue) * t
-            let wordSize = layout.fontPixelSize * max(0.1, overrides?.sizeMultiplier ?? 1)
+            // The size the layout drew the word at (a stacked line scales it).
+            let wordSize = fontSize(of: slot.fillLine)
+                ?? layout.fontPixelSize * max(0.1, overrides?.sizeMultiplier ?? 1)
             let slant = min(max(overrides?.slant ?? style.slant ?? 0, -0.6), 0.6)
             let font = FontResolver.font(
                 family: overrides?.fontFamily ?? style.fontFamily,
                 weightTrait: trait, size: wordSize, slant: slant
             )
-            let text = CaptionLayout.lineText(for: slot.word, style: style)
+            let text = slot.text
             let kern = style.letterSpacing * layout.referenceScale
             let fill = CaptionLayout.makeLine(text, font: font, kern: kern, stroke: nil)
             let strokes = style.resolvedStrokes(for: overrides).map { layer in
@@ -1201,7 +1233,7 @@ public enum CaptionRenderer {
 
         // Center the heavier line inside the reserved slot.
         let origin = CGPoint(
-            x: slot.baselineOrigin.x + (slot.frame.width - resolved.width) / 2,
+            x: slot.frame.minX + (slot.frame.width - resolved.width) / 2,
             y: slot.baselineOrigin.y
         )
         return CardLayout.WordSlot(
@@ -1212,8 +1244,17 @@ public enum CaptionRenderer {
             baselineOrigin: origin,
             fillLine: resolved.fill,
             strokeLines: resolved.strokes,
-            charSlots: nil
+            charSlots: nil,
+            text: slot.text
         )
+    }
+
+    /// The point size of a laid-out line's first run, if it has one.
+    private static func fontSize(of line: CTLine) -> CGFloat? {
+        guard let runs = CTLineGetGlyphRuns(line) as? [CTRun], let run = runs.first else { return nil }
+        let attributes = CTRunGetAttributes(run) as NSDictionary
+        guard let value = attributes[kCTFontAttributeName], CFGetTypeID(value as CFTypeRef) == CTFontGetTypeID() else { return nil }
+        return CTFontGetSize(value as! CTFont)
     }
 
     /// A quantized clock combined into silhouette-sensitive cache keys while
@@ -1263,7 +1304,8 @@ public enum CaptionRenderer {
         style: CaptionStyle,
         layout: CardLayout,
         states: [WordState],
-        anim: (alpha: Double, dy: CGFloat, scale: CGFloat),
+        anim: (alpha: Double, dx: CGFloat, dy: CGFloat, scale: CGFloat),
+        extras: CardExtras = CardExtras(),
         shadow: ShadowStyle,
         phase: CGFloat = 0,
         time: TimeInterval = .greatestFiniteMagnitude
@@ -1288,7 +1330,7 @@ public enum CaptionRenderer {
                 hasher.combine(state.karaokeFraction)
             }
         }
-        hasher.combine(anim.dy); hasher.combine(anim.scale)
+        hasher.combine(anim.dx); hasher.combine(anim.dy); hasher.combine(anim.scale)
         // A crawling ring reshapes the silhouette every frame.
         if phase != 0 { hasher.combine(Int((phase * 3600).rounded())) }
         // So do a mid-flight letter cascade and a background drawing on.
@@ -1339,18 +1381,19 @@ public enum CaptionRenderer {
         }
         let pad = f * 0.8 + glowPad + (maxStrokePts + maxHardPts + maxExtrudePts) * layout.referenceScale
             + (style.chromaticAberration ?? 0) * layout.referenceScale + warpPad + 8
-        var box = layout.blockRect.insetBy(dx: -pad, dy: -pad)
+        var box = layout.blockRect.union(extras.bounds).insetBy(dx: -pad, dy: -pad)
         var transform = CGAffineTransform.identity
         let center = CGPoint(x: layout.blockRect.midX, y: layout.blockRect.midY)
-        if let rotation = style.blockRotation, rotation != 0 {
+        let rotation = blockRotation(for: card, style: style)
+        if rotation != 0 {
             transform = transform
                 .translatedBy(x: center.x, y: center.y)
                 .rotated(by: -rotation)
                 .translatedBy(x: -center.x, y: -center.y)
         }
-        if anim.scale != 1 || anim.dy != 0 {
+        if anim.scale != 1 || anim.dy != 0 || anim.dx != 0 {
             transform = transform
-                .translatedBy(x: center.x, y: center.y + anim.dy)
+                .translatedBy(x: center.x + anim.dx, y: center.y + anim.dy)
                 .scaledBy(x: anim.scale, y: anim.scale)
                 .translatedBy(x: -center.x, y: -center.y)
         }
@@ -1372,7 +1415,8 @@ public enum CaptionRenderer {
         inkCtx.setShouldAntialias(true)
         inkCtx.interpolationQuality = .high
         drawBackground(card: card, style: style, layout: layout, states: states,
-                       in: inkCtx, phase: phase, elapsed: time - card.start)
+                       in: inkCtx, phase: phase, elapsed: time - card.start, extraRect: extras.backgroundRect)
+        drawExtras(extras, in: inkCtx)
         for slot in layout.words {
             let state = states[slot.index]
             guard state.visible else { continue }
@@ -1516,7 +1560,9 @@ public enum CaptionRenderer {
             let padV = layout.fontPixelSize * (style.activeBoxPadV ?? 0.10)
             let box = slot.frame.insetBy(dx: -padH, dy: -padV)
             let radius = min(layout.fontPixelSize * 0.18, box.height / 2)
-            let path = CGPath(roundedRect: box, cornerWidth: radius, cornerHeight: radius, transform: nil)
+            let path = style.activeBoxShape == .marker
+                ? markerSwipePath(box)
+                : CGPath(roundedRect: box, cornerWidth: radius, cornerHeight: radius, transform: nil)
             let boxFill = state.boxGradient.map {
                 hueShifted($0, turns: driftTurns($0, clock: state.driftClock))
             }

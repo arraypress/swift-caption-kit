@@ -74,6 +74,15 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
     /// `nil` to color all speakers alike.
     public var speakerColors: [StyleColor]?
 
+    /// Speakers' names for styles that show them (index = speaker id from
+    /// diarization), or `nil` for "Speaker 1", "Speaker 2", ….
+    public var speakerNames: [String]?
+
+    /// A second transcript drawn small above each caption by styles with a
+    /// ``CaptionStyle/secondaryLine`` (the bilingual look): a card shows the
+    /// words whose midpoint falls in its span. `nil` = none.
+    public var secondaryWords: [Word]?
+
     /// Gaussian-blur the background behind the person (reference points at
     /// a 1920-tall frame), or `nil` for none. On-device person segmentation.
     public var backgroundBlur: Double?
@@ -191,6 +200,8 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
         case renderConfig
         case hook
         case behindSubject
+        case speakerNames
+        case secondaryWords
     }
 
     /// The keys this type models, so ``PreservedValue/unmodelledFields(from:known:)``
@@ -234,6 +245,8 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
         disabledTracks = try container.decodeIfPresent(Set<TrackKind>.self, forKey: .disabledTracks)
         hook = try container.decodeIfPresent(HookTitle.self, forKey: .hook)
         behindSubject = try container.decodeIfPresent(BehindSubject.self, forKey: .behindSubject)
+        speakerNames = try container.decodeIfPresent([String].self, forKey: .speakerNames)
+        secondaryWords = try container.decodeIfPresent([Word].self, forKey: .secondaryWords)
 
         // Everything another writer put there that this one does not model.
         preserved = PreservedValue.unmodelledFields(from: decoder, known: Self.modelledKeys)
@@ -273,6 +286,8 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
         try container.encode(renderConfig, forKey: .renderConfig)
         try container.encodeIfPresent(hook, forKey: .hook)
         try container.encodeIfPresent(behindSubject, forKey: .behindSubject)
+        try container.encodeIfPresent(speakerNames, forKey: .speakerNames)
+        try container.encodeIfPresent(secondaryWords, forKey: .secondaryWords)
 
         // Last, so a modelled key always wins over a stale preserved copy of
         // the same name.
@@ -313,7 +328,7 @@ public enum TrackKind: String, Codable, Equatable, Hashable, Sendable, CaseItera
     case broll
 
     /// Sound effects. Present so such a document still opens.
-    case soundEffects
+    case soundEffects = "sound-effects"
 }
 
 /// A thin animated progress bar across the frame — the "keep watching" bar.

@@ -27,12 +27,12 @@ enum HookTemplateCatalogText {
                  "shadow": null,
                  "background": {"color": "#FFD400", "cornerRadius": 18, "mode": "block", "paddingHorizontal": 36, "paddingVertical": 18},
                  "highlightMode": "none", "activeWordColor": null, "activeWordScale": 1,
-                 "cardAnimation": "popOn", "animationDuration": 0.2}},
+                 "cardAnimation": "pop-on", "animationDuration": 0.2}},
       {"name": "clean", "summary": "Bold white sans with a soft shadow, faded in",
        "style": {"fontFamily": "Avenir Next", "fontSize": 92, "fontWeight": "bold", "strokeColor": null, "strokeWidth": 0,
                  "shadow": {"color": "black@0.55", "radius": 14, "offsetX": 0, "offsetY": 4},
                  "highlightMode": "none", "activeWordColor": null, "activeWordScale": 1,
-                 "cardAnimation": "fadeIn", "animationDuration": 0.25}}
+                 "cardAnimation": "fade-in", "animationDuration": 0.25}}
     ]
     """#
 }

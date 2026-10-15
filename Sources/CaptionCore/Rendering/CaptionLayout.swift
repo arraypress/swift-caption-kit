@@ -40,6 +40,9 @@ import Foundation
         /// chip, tilt all baked). `nil` for normal words — the renderer takes
         /// the per-character path only when this is present.
         @_spi(CaptionEngine) public let charSlots: [CharSlot]?
+        /// The exact text the word is drawn as — case, sentence capital,
+        /// speaker dash and inline emoji applied.
+        @_spi(CaptionEngine) public let text: String
 
         /// Memberwise; the renderer re-slots a word drawn at another weight.
         @_spi(CaptionEngine) public init(
@@ -50,8 +53,10 @@ import Foundation
             baselineOrigin: CGPoint,
             fillLine: CTLine,
             strokeLines: [CTLine],
-            charSlots: [CharSlot]?
+            charSlots: [CharSlot]?,
+            text: String
         ) {
+            self.text = text
             self.index = index
             self.word = word
             self.lineIndex = lineIndex
@@ -183,9 +188,15 @@ import Foundation
         // (measurement is linear in font size, so one pass converges).
         let maxBlockWidth = canvas.width * min(1, max(0.1, style.maxWidthFraction))
         var metrics = measure(card: card, style: style, fontSize: fontSize, referenceScale: referenceScale)
+        // Stacked type: each line scaled up to the widest line's width.
+        var lineScales: [CGFloat]?
+        if style.fitLinesToWidth == true, metrics.lines.count > 1 {
+            lineScales = fitScales(metrics)
+            metrics = measure(card: card, style: style, fontSize: fontSize, referenceScale: referenceScale, lineScales: lineScales)
+        }
         if !folded, metrics.blockWidth > maxBlockWidth {
             fontSize = max(1, fontSize * maxBlockWidth / metrics.blockWidth)
-            metrics = measure(card: card, style: style, fontSize: fontSize, referenceScale: referenceScale)
+            metrics = measure(card: card, style: style, fontSize: fontSize, referenceScale: referenceScale, lineScales: lineScales)
         }
 
         // Anchor the block at the style's normalized position (top-left
@@ -240,10 +251,11 @@ import Foundation
                     word: measured.word,
                     lineIndex: lineIndex,
                     frame: frame,
-                    baselineOrigin: CGPoint(x: x, y: baselineY),
+                    baselineOrigin: CGPoint(x: x + measured.inkOffset, y: baselineY),
                     fillLine: measured.fillLine,
                     strokeLines: measured.strokeLines,
-                    charSlots: measured.charSlots
+                    charSlots: measured.charSlots,
+                    text: measured.text
                 ))
                 indexes.append(wordCursor)
                 wordCursor += 1
@@ -277,7 +289,13 @@ import Foundation
 
     private struct MeasuredWord {
         let word: Word
+        /// The drawn text.
+        let text: String
+        /// The space reserved for the word — wider than its ink when a held
+        /// weight ramp reserves the heavier weight's width.
         let width: CGFloat
+        /// How far into that space the ink starts (centred when reserved).
+        let inkOffset: CGFloat
         let ascent: CGFloat
         let descent: CGFloat
         let fillLine: CTLine
@@ -305,12 +323,24 @@ import Foundation
         let spaceWidth: CGFloat
     }
 
+    /// Per-line scales that bring every line to the widest line's width,
+    /// capped at ``CaptionStyle/maximumLineFitScale``.
+    private static func fitScales(_ metrics: Metrics) -> [CGFloat] {
+        let target = metrics.lines.map(\.totalWidth).max() ?? 0
+        return metrics.lines.map { line in
+            guard line.totalWidth > 0, target > 0 else { return 1 }
+            return min(CaptionStyle.maximumLineFitScale, max(1, target / line.totalWidth))
+        }
+    }
+
     private static func measure(
         card: CaptionCard,
         style: CaptionStyle,
         fontSize: CGFloat,
-        referenceScale: CGFloat
+        referenceScale: CGFloat,
+        lineScales: [CGFloat]? = nil
     ) -> Metrics {
+        let texts = displayTexts(for: card, style: style)
         let slant = min(max(style.slant ?? 0, -0.6), 0.6)
         let baseFont = FontResolver.font(family: style.fontFamily, weight: style.fontWeight, size: fontSize, slant: slant)
         let kern = style.letterSpacing * referenceScale
@@ -329,7 +359,10 @@ import Foundation
         var blockWidth: CGFloat = 0
         var blockHeight: CGFloat = 0
         var wordCounter = 0   // flat word index — seeds the ransom letters
-        for lineWords in card.lines {
+        // A held weight ramp: words reserve the heavier weight's width.
+        let heldRamp = style.weightRampHolds == true && style.mixedLetters == nil ? style.activeWordWeightRamp : nil
+        for (lineIndex, lineWords) in card.lines.enumerated() {
+            let lineScale = lineScales.map { lineIndex < $0.count ? $0[lineIndex] : 1 } ?? 1
             var measured: [MeasuredWord] = []
             var total: CGFloat = 0
             var maxAscent: CGFloat = 0
@@ -340,7 +373,7 @@ import Foundation
                 // stays constant in pixels (the CoreText attribute is a
                 // percentage of font size, so it's recomputed per word).
                 let overrides = word.style
-                let wordSize = fontSize * max(0.1, overrides?.sizeMultiplier ?? 1)
+                let wordSize = fontSize * max(0.1, overrides?.sizeMultiplier ?? 1) * lineScale
                 // Per-word slant overrides the global shear; clamp to the same
                 // sane range so an extreme value can't lay the glyphs flat.
                 let wordSlant = min(max(overrides?.slant ?? slant, -0.6), 0.6)
@@ -357,10 +390,7 @@ import Foundation
                 }
                 // Inline emoji rides the word's own line — it pops, scales,
                 // and karaoke-clips together with its word.
-                var text = transformed(word.text, transform: style.textTransform)
-                if let emoji = overrides?.emoji, !emoji.isEmpty {
-                    text += " " + emoji
-                }
+                let text = texts[wordCounter]
                 let fillLine = makeLine(text, font: font, kern: kern, stroke: nil)
                 // One stroke-only line per resolved layer, widest-first. The
                 // CoreText stroke-width attribute is a percent of the font size,
@@ -387,9 +417,18 @@ import Foundation
                     measuredAscent = CTFontGetAscent(font)
                     measuredDescent = CTFontGetDescent(font)
                 }
+                // The heavier weight's width, when a held ramp reserves it.
+                var reserved = measuredWidth
+                if let heldRamp, charSlots == nil {
+                    let heavy = FontResolver.font(family: overrides?.fontFamily ?? style.fontFamily,
+                                                  weight: heldRamp, size: wordSize, slant: wordSlant)
+                    reserved = max(measuredWidth, lineWidth(makeLine(text, font: heavy, kern: kern, stroke: nil)))
+                }
                 measured.append(MeasuredWord(
                     word: word,
-                    width: measuredWidth,
+                    text: text,
+                    width: reserved,
+                    inkOffset: (reserved - measuredWidth) / 2,
                     ascent: measuredAscent,
                     descent: measuredDescent,
                     fillLine: fillLine,
@@ -489,15 +528,45 @@ import Foundation
         return slots
     }
 
-    /// The exact string a word lays out as (case transform + inline emoji)
-    /// — shared with the renderer so re-resolved lines (weight ramps) can
-    /// never drift from the layout's text.
-    @_spi(CaptionEngine) public static func lineText(for word: Word, style: CaptionStyle) -> String {
-        var text = transformed(word.text, transform: style.textTransform)
-        if let emoji = word.style?.emoji, !emoji.isEmpty {
-            text += " " + emoji
+    /// The exact strings a card's words lay out as, in order: the case
+    /// transform, a sentence capital, a speaker dash, then any inline emoji.
+    /// The renderer reads them back off the slots (``CardLayout/WordSlot/text``),
+    /// so a re-resolved line (a weight ramp) can never drift from the layout.
+    @_spi(CaptionEngine) public static func displayTexts(for card: CaptionCard, style: CaptionStyle) -> [String] {
+        let dashed = dashedWords(in: card, style: style)
+        return card.words.enumerated().map { index, word in
+            var text = transformed(word.text, transform: style.textTransform)
+            if style.textTransform == .sentence, index == 0 || card.words[index - 1].endsSentence {
+                text = capitalisedFirstLetter(text)
+            }
+            if dashed.contains(index) { text = "- " + text }
+            if let emoji = word.style?.emoji, !emoji.isEmpty {
+                text += " " + emoji
+            }
+            return text
         }
-        return text
+    }
+
+    /// The words that open a speaker's line on a card holding two or more
+    /// speakers, when the style dashes speakers (``CaptionStyle/speakerDash``).
+    @_spi(CaptionEngine) public static func dashedWords(in card: CaptionCard, style: CaptionStyle) -> Set<Int> {
+        guard style.speakerDash == true, Set(card.words.compactMap(\.speaker)).count >= 2 else { return [] }
+        var dashed: Set<Int> = []
+        var previousSpeaker: Int?
+        var start = 0
+        for line in card.lines where !line.isEmpty {
+            let speaker = line.compactMap(\.speaker).first
+            if start == 0 || speaker != previousSpeaker { dashed.insert(start) }
+            previousSpeaker = speaker ?? previousSpeaker
+            start += line.count
+        }
+        return dashed
+    }
+
+    /// `text` with its first letter upper-cased, the rest untouched.
+    @_spi(CaptionEngine) public static func capitalisedFirstLetter(_ text: String) -> String {
+        guard let index = text.firstIndex(where: \.isLetter) else { return text }
+        return text.replacingCharacters(in: index...index, with: text[index...index].uppercased())
     }
 
     @_spi(CaptionEngine) public static func makeLine(
@@ -532,6 +601,8 @@ import Foundation
         case .none: return text
         case .uppercase: return text.uppercased()
         case .lowercase: return text.lowercased()
+        // Sentence capitals need the card around the word: see displayTexts.
+        case .sentence: return text
         }
     }
 

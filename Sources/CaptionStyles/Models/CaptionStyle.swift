@@ -238,6 +238,62 @@ public struct CaptionStyle: Codable, Equatable, Hashable, Sendable {
     /// ``WordStyle/censored`` overrides this either way. `nil`/`false` = off.
     public var censorProfanity: Bool? = nil
 
+    /// The spoken-word highlight colour cycles through these instead of
+    /// staying ``activeWordColor`` — each highlighted word takes the next,
+    /// starting at a point seeded by the card (the colour-cycling key word).
+    /// `nil`/empty = ``activeWordColor``.
+    public var activeWordPalette: [StyleColor]? = nil
+
+    /// The Highlight Box's silhouette: ``BackgroundStyle/Shape/marker`` makes
+    /// it a rough highlighter swipe. `nil` = the rounded box.
+    public var activeBoxShape: BackgroundStyle.Shape? = nil
+
+    /// Highlight the card's KEY words instead of following the voice: when
+    /// any word on the card carries a colour override (automatic emphasis,
+    /// a recipe's per-word emphasis), those words wear the highlight for the
+    /// whole card; a card with none falls back to the spoken word. Applies
+    /// to ``HighlightMode/activeWord``, ``HighlightMode/activeBox`` and
+    /// ``HighlightMode/activeUnderline``. `nil`/`false` = follow the voice.
+    public var highlightKeyWords: Bool? = nil
+
+    /// With ``activeWordWeightRamp``: a word already spoken keeps the target
+    /// weight, so the line fills in bold as it is said (the weight sweep).
+    /// Each word's space is reserved at the heavier weight so nothing
+    /// collides. `nil`/`false` = the weight returns after the word.
+    public var weightRampHolds: Bool? = nil
+
+    /// Speaker colours carried by the style: a speaker's words take
+    /// `speakerColors[speaker % count]`. A document's own
+    /// `speakerColors` win; with neither, speakers look alike. `nil` = none.
+    public var speakerColors: [StyleColor]? = nil
+
+    /// The speaker's name shown with their caption — a bold line above the
+    /// text or a chip — when the card's words carry a speaker. `nil` = none.
+    public var speakerLabel: SpeakerLabelStyle? = nil
+
+    /// A leading dash on each speaker's line when one card holds two
+    /// speakers — the streaming-subtitle convention. Pair with grouping's
+    /// `speakerBreak: line`. `nil`/`false` = no dashes.
+    public var speakerDash: Bool? = nil
+
+    /// Stacked type: every line is scaled so it spans the widest line's
+    /// width (short words grow, at most ``maximumLineFitScale``×), building
+    /// a solid block. `nil`/`false` = every line at the font size.
+    public var fitLinesToWidth: Bool? = nil
+
+    /// A seeded tilt per card, up to this many radians either way, on top of
+    /// ``blockRotation`` — each caption lands at its own slight angle.
+    /// Deterministic in the card's start time. `nil`/`0` = level.
+    public var cardTilt: CGFloat? = nil
+
+    /// A second line of text drawn small above the caption — the bilingual
+    /// look. Its words come from the document's `secondaryWords` (those
+    /// whose midpoint falls in the card's span). `nil` = none.
+    public var secondaryLine: SecondaryLineStyle? = nil
+
+    /// The largest a ``fitLinesToWidth`` line is scaled up.
+    public static let maximumLineFitScale: CGFloat = 2.4
+
     /// Scale applied to the active word at the peak of its pop (`1` = none).
     public var activeWordScale: CGFloat
 
@@ -318,11 +374,12 @@ public struct NormalizedPoint: Codable, Equatable, Hashable, Sendable {
 
 /// Font weight, mapped to CoreText weight traits at draw time.
 public enum FontWeight: String, Codable, CaseIterable, Sendable {
-    case regular, medium, semibold, bold, heavy, black
+    case light, regular, medium, semibold, bold, heavy, black
 
     /// The CoreText weight trait value (`-1…1`).
     public var traitValue: CGFloat {
         switch self {
+        case .light: return -0.4
         case .regular: return 0.0
         case .medium: return 0.23
         case .semibold: return 0.30
@@ -338,6 +395,10 @@ public enum TextTransform: String, Codable, CaseIterable, Sendable {
     case none
     case uppercase
     case lowercase
+
+    /// As transcribed, with each card's first word — and any word after a
+    /// sentence ends — starting with a capital.
+    case sentence
 }
 
 /// Horizontal alignment of lines within the caption block.
@@ -355,13 +416,13 @@ public enum WordAnimation: String, Codable, CaseIterable, Sendable {
     case none
 
     /// Fades in.
-    case fadeIn
+    case fadeIn = "fade-in"
 
     /// Pops on with a small scale overshoot.
-    case popOn
+    case popOn = "pop-on"
 
     /// Bounces to full size like a dropped ball settling.
-    case bounceIn
+    case bounceIn = "bounce-in"
 
     /// Springs on with a damped elastic wobble.
     case spring
@@ -370,19 +431,19 @@ public enum WordAnimation: String, Codable, CaseIterable, Sendable {
     case stomp
 
     /// Slides up into place.
-    case slideUp
+    case slideUp = "slide-up"
 
     /// Drops down into place.
-    case slideDown
+    case slideDown = "slide-down"
 
     /// Flies in from the left.
-    case flyInLeft
+    case flyInLeft = "fly-in-left"
 
     /// Flies in from the right.
-    case flyInRight
+    case flyInRight = "fly-in-right"
 
     /// Spins in with a tilt and a pop.
-    case rotateIn
+    case rotateIn = "rotate-in"
 
     /// Reveals left-to-right like a fast typewriter wipe.
     case typewriter
@@ -394,7 +455,7 @@ public enum WordAnimation: String, Codable, CaseIterable, Sendable {
     case drop
 
     /// Rises from below while spinning upright.
-    case twirlUp
+    case twirlUp = "twirl-up"
 
     /// Swings in like a pendulum settling.
     case swing
@@ -404,31 +465,31 @@ public enum WordAnimation: String, Codable, CaseIterable, Sendable {
 
     /// Rolls in from the right like a wheel — flies leftward into place
     /// while spinning one full turn, landing upright.
-    case rollIn
+    case rollIn = "roll-in"
 
     /// Rolls in from the left, spinning the other way.
-    case rollInLeft
+    case rollInLeft = "roll-in-left"
 
     /// Zooms in from tiny, clean and linear — no overshoot (the minimal
     /// title look; ``popOn`` with the bounce removed).
-    case zoomIn
+    case zoomIn = "zoom-in"
 
     /// Spirals in — shrinks from oversized while sweeping a quarter-turn
     /// arc into place.
-    case spiralIn
+    case spiralIn = "spiral-in"
 
     /// Flips down over the top edge like a page settling — a vertical
     /// squash-and-recover that reads as a 3D flip.
-    case flipDown
+    case flipDown = "flip-down"
 
     /// Whips in from the left with a heavy tilt that snaps upright.
-    case whipIn
+    case whipIn = "whip-in"
 
     /// Sharpens into focus from a soft blur — the focus-pull entrance.
-    case blurIn
+    case blurIn = "blur-in"
 
     /// Whips in from the left trailing a directional motion smear.
-    case smearIn
+    case smearIn = "smear-in"
 }
 
 /// How a whole caption block enters at its card's start time, on top of any
@@ -439,19 +500,23 @@ public enum CardAnimation: String, Codable, CaseIterable, Sendable {
     case none
 
     /// The block fades in.
-    case fadeIn
+    case fadeIn = "fade-in"
 
     /// The block rises into place.
-    case slideUp
+    case slideUp = "slide-up"
 
     /// The block drops into place.
-    case slideDown
+    case slideDown = "slide-down"
 
     /// The block pops on with a scale overshoot.
-    case popOn
+    case popOn = "pop-on"
 
     /// The block slams down from oversized.
     case stomp
+
+    /// The block slides in from the left edge of the frame (the broadcast
+    /// lower third).
+    case slideInLeft = "slide-in-left"
 }
 
 /// How the currently-spoken word is emphasized.
@@ -461,7 +526,7 @@ public enum HighlightMode: String, Codable, CaseIterable, Sendable {
     case none
 
     /// The active word switches to ``CaptionStyle/activeWordColor`` while spoken.
-    case activeWord
+    case activeWord = "active-word"
 
     /// Karaoke: words fill left-to-right with the active color as they are
     /// spoken, and stay filled afterwards.
@@ -470,11 +535,11 @@ public enum HighlightMode: String, Codable, CaseIterable, Sendable {
     /// A rounded box in ``CaptionStyle/activeWordColor`` hugs just the
     /// spoken word, hopping word to word; the text itself stays in
     /// ``CaptionStyle/textColor``.
-    case activeBox
+    case activeBox = "active-box"
 
     /// An underline bar in ``CaptionStyle/activeWordColor`` slides under
     /// the spoken word.
-    case activeUnderline
+    case activeUnderline = "active-underline"
 
     /// The spoken word stays at full strength while the rest of the
     /// caption dims — the "focus" look.
@@ -804,10 +869,10 @@ public struct GlowStyle: Codable, Equatable, Hashable, Sendable {
     public enum Scope: String, Codable, CaseIterable, Sendable {
 
         /// Every visible word glows — the music-lyric title look.
-        case allWords
+        case allWords = "all-words"
 
         /// Only the currently-spoken word blooms, riding the highlight.
-        case activeWord
+        case activeWord = "active-word"
     }
 
     /// The halo color (often white, whatever the text color).
@@ -840,9 +905,9 @@ public struct BackgroundStyle: Codable, Equatable, Hashable, Sendable {
     /// Whether the background wraps each line, the whole block, or every
     /// word in its own chip (the message-bubble look).
     public enum Mode: String, Codable, CaseIterable, Sendable {
-        case perLine
+        case perLine = "per-line"
         case block
-        case perWord
+        case perWord = "per-word"
     }
 
     /// The background's silhouette.

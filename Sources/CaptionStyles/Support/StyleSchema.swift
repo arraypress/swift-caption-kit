@@ -33,6 +33,8 @@ public enum StyleSchema {
         ("mixedLetters", names(of: MixedLetterStyle())),
         ("position", names(of: NormalizedPoint(x: 0, y: 0))),
         ("strokeLayers.*", names(of: StrokeLayer())),
+        ("speakerLabel", names(of: SpeakerLabelStyle())),
+        ("secondaryLine", names(of: SecondaryLineStyle())),
     ]
 
     /// Every key in `style` that is not a style field, as a dotted path —

@@ -19,7 +19,7 @@ public enum StyleJSON {
     /// The keys whose values are colours, or lists of them.
     public static let colorKeys: Set<String> = [
         "color", "colors", "textColor", "strokeColor", "activeWordColor", "activeBoxTextColor", "knockoutPlate",
-        "wordColorPalette", "fringeColors", "chipColors", "underline",
+        "wordColorPalette", "fringeColors", "chipColors", "underline", "speakerColors", "activeWordPalette",
     ]
 
     /// `CaptionStyle()` as JSON: the base every partial style is laid over.

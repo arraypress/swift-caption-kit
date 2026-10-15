@@ -23,7 +23,7 @@ struct PreservationTests {
           "stickers": [{"id":"A1","emoji":"🔥","start":1.0,"end":2.0}],
           "music": {"url":"file:///bed.m4a","volume":0.4,"duckUnderVoice":true},
           "grade": {"exposure":0.2,"contrast":1.1,"lut":"teal-orange.cube"},
-          "soundEffects": [{"kind":"whoosh","time":0.5}],
+          "sound-effects": [{"kind":"whoosh","time":0.5}],
           "appendedClips": [{"url":"file:///outro.mov","duration":3.0}],
           "faceBeauty": {"smoothing":0.3},
           "somethingFromAFutureBuild": {"nested":[1,2,3],"flag":true,"name":"x"}
@@ -44,7 +44,7 @@ struct PreservationTests {
             try JSONSerialization.jsonObject(with: written) as? [String: Any]
         )
 
-        for key in ["stickers", "music", "grade", "soundEffects", "appendedClips", "faceBeauty"] {
+        for key in ["stickers", "music", "grade", "sound-effects", "appendedClips", "faceBeauty"] {
             #expect(json[key] != nil, "\(key) was dropped")
         }
     }
@@ -167,7 +167,7 @@ struct TrackKindTests {
         // The reason TrackKind keeps cases for content this engine cannot
         // draw: disabledTracks decodes as a Set<TrackKind>, so a missing case
         // fails the whole document rather than one field.
-        let data = Data(#"{"cards":[],"disabledTracks":["stickers","broll","soundEffects"]}"#.utf8)
+        let data = Data(#"{"cards":[],"disabledTracks":["stickers","broll","sound-effects"]}"#.utf8)
         let document = try CaptionDocument.deserialize(from: data)
 
         #expect(document.disabledTracks?.contains(.stickers) == true)
@@ -260,7 +260,7 @@ struct CutTransitionTests {
     func offersSeven() {
         #expect(CutStyle.allCases.count == 7)
         #expect(Set(CutStyle.allCases.map(\.rawValue)) == [
-            "none", "dipToBlack", "dipToWhite", "punchIn", "whipPan", "zoomBlur", "glitch",
+            "none", "dip-to-black", "dip-to-white", "punch-in", "whip-pan", "zoom-blur", "glitch",
         ])
     }
 
