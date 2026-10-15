@@ -78,6 +78,24 @@ the Swift presets they replaced (every field, every Double), as do the
 featured flags, grouping hints and word looks; and `swift-caption-kit` renders
 200/200 frames identical to this engine across the 50 presets × 4 moments.
 
+## The shared engine: `CaptionCore`
+
+Everything both caption engines do the same way is a third product,
+`CaptionCore`, which `CaptionKitLite` also re-exports: `Word`, `CaptionCard`,
+`Cut`, `RenderConfig`, `HighlightRule`, `FaceCensor`; `CaptionGrouper`,
+`TimeMap`, `FillerCutter`, `ProfanityFilter`, `SpeakerAssign`,
+`AutoPlacement`, `FaceTrack`; `CaptionLayout`, `Reframe`, `AutoMotion`; the
+blur, face-cover and gradient filters; `ExportSettings`, `SubtitleFile` and
+`OverlayExporter`. `swift-caption-kit` builds on it instead of carrying its own
+copies (it used to carry 24 byte-identical files and a drifted
+`ExportSettings`).
+
+What stays per engine is the document, the renderer and the burn-in exporter.
+`SubtitleFile` and `OverlayExporter` take any `CaptionTimeline` — a protocol
+each engine's `CaptionDocument` adopts by drawing with its own renderer — so
+there is one writer for both. The layout and timing helpers the renderers share
+are SPI (`@_spi(CaptionEngine) import CaptionCore`), not public API.
+
 **Grouping** — `CaptionGrouper` turns a word stream into readable cards by
 pause, line and character rules; `reflowLines` re-lays a card without touching
 timing.
@@ -98,6 +116,12 @@ fonts), `Reframe` (aspect-fill, crop offset, face-track keyframes),
 `AutoMotion` (breathing zoom, punch-ins on emphasized words), burn-in export,
 `OverlayExporter` (the caption layer alone as ProRes 4444 **with alpha**, for
 cutting in Final Cut or Premiere), and SRT/VTT via `SubtitleFile`.
+
+Exports that re-encode the sound (any cut, speed ramp, bleep or volume change)
+ask the AAC encoder for 128 kb/s where it offers that — 44.1 and 48 kHz — and
+otherwise for the highest bitrate it does offer: 64 kb/s for 22.05 kHz mono,
+the format `say` writes. A fixed 128 kb/s was refused there ("Cannot Encode
+Media"), so every cut export of such a clip failed.
 
 ## Usage
 
@@ -141,7 +165,7 @@ Mills Museum, archive.org, Public Domain Mark) and four minutes of a NASA crew
 interview (STS-133, archive.org, US government work). `FillerCutter` with
 fillers on and pauses over 1 s, then `Splicer`, via `caption cut --verify`:
 
-| | oral history (5:00) | interview (4:00) |
+| Measure | oral history (5:00) | interview (4:00) |
 |---|---|---|
 | Cuts | 11 — 9 pauses, 2 "uh" | 5 — 3 pauses, "um", "uh uh" |
 | Shorter by | 24.2 s | 6.2 s |

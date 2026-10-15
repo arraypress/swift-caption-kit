@@ -1,6 +1,6 @@
 //
 //  OverlayExporter.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
@@ -15,12 +15,12 @@ import Foundation
 /// frame-for-frame.
 public final class OverlayExporter: @unchecked Sendable {
 
-    private let document: CaptionDocument
+    private let document: any CaptionTimeline
     private let outputURL: URL
     private var cancelled = false
     private let lock = NSLock()
 
-    public init(document: CaptionDocument, outputURL: URL) {
+    public init(document: some CaptionTimeline, outputURL: URL) {
         self.document = document
         self.outputURL = outputURL
     }
@@ -103,7 +103,7 @@ public final class OverlayExporter: @unchecked Sendable {
                 bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
             ) {
                 context.clear(CGRect(x: 0, y: 0, width: config.width, height: config.height))
-                CaptionRenderer.draw(document: document, in: context, at: sourceTime)
+                document.drawCaptions(in: context, at: sourceTime)
             }
             CVPixelBufferUnlockBaseAddress(buffer, [])
 

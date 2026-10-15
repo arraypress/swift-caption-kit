@@ -1,6 +1,6 @@
 //
 //  ExportSettings.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
@@ -19,7 +19,7 @@ public struct ExportSettings: Sendable {
         case hevc
         case h264
 
-        var avCodec: AVVideoCodecType {
+        @_spi(CaptionEngine) public var avCodec: AVVideoCodecType {
             switch self {
             case .hevc: return .hevc
             case .h264: return .h264

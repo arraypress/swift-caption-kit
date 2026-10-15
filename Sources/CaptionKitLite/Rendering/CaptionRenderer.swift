@@ -5,6 +5,7 @@
 //  Created by David Sherlock on 2026.
 //
 
+@_spi(CaptionEngine) import CaptionCore
 import CoreGraphics
 import CoreImage
 import CoreText

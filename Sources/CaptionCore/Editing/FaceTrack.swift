@@ -1,6 +1,6 @@
 //
 //  FaceTrack.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
@@ -19,7 +19,7 @@ public struct CropKeyframe: Codable, Equatable, Sendable {
     public var time: TimeInterval
 
     /// The crop center, `0…1` per axis, top-left semantics (same space as
-    /// ``CaptionDocument/cropOffset``).
+    /// the document's `cropOffset`).
     public var offset: CaptionStyles.NormalizedPoint
 
     /// Extra zoom at this moment (`1` = no zoom, `1.5` = punched in 50%) —

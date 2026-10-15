@@ -11,6 +11,7 @@
 import CoreGraphics
 import Foundation
 import Testing
+@_spi(CaptionEngine) @testable import CaptionCore
 @testable import CaptionKitLite
 
 private func makeDocument(_ tune: (inout CaptionStyle) -> Void = { _ in }) -> CaptionDocument {

@@ -1,6 +1,6 @@
 //
 //  BleepTone.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
@@ -11,12 +11,12 @@ import AVFoundation
 /// file the exporter splices in over censored words (with the voice ducked to
 /// silence underneath). Kept dead simple and dependency-free: no sample assets
 /// to ship, and the tone is synthesised on demand at the length needed.
-enum BleepTone {
+@_spi(CaptionEngine) public enum BleepTone {
 
     /// Renders a sine tone of `duration` seconds to a temp CAF file and returns
     /// its URL, or `nil` on failure. Includes a 5 ms fade in/out so splicing it
     /// mid-timeline doesn't click.
-    static func makeFile(duration: Double, frequency: Double = 1000, sampleRate: Double = 44_100) -> URL? {
+    @_spi(CaptionEngine) public static func makeFile(duration: Double, frequency: Double = 1000, sampleRate: Double = 44_100) -> URL? {
         let frameCount = AVAudioFrameCount(max(1, (duration * sampleRate).rounded()))
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),

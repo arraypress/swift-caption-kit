@@ -1,6 +1,6 @@
 //
 //  CaptionLayout.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
@@ -20,73 +20,94 @@ import Foundation
 ///
 /// All rects are in **CoreGraphics coordinates** (origin bottom-left, y up)
 /// at the full render resolution.
-struct CardLayout {
+@_spi(CaptionEngine) public struct CardLayout {
 
-    struct WordSlot {
+    @_spi(CaptionEngine) public struct WordSlot {
         /// Index into `card.words`.
-        let index: Int
-        let word: Word
-        let lineIndex: Int
+        @_spi(CaptionEngine) public let index: Int
+        @_spi(CaptionEngine) public let word: Word
+        @_spi(CaptionEngine) public let lineIndex: Int
         /// The glyph band: baseline − descent … baseline + ascent.
-        let frame: CGRect
+        @_spi(CaptionEngine) public let frame: CGRect
         /// Where `CTLineDraw` should start drawing (the baseline origin).
-        let baselineOrigin: CGPoint
+        @_spi(CaptionEngine) public let baselineOrigin: CGPoint
         /// The word drawn with fill-from-context (color set at draw time).
-        let fillLine: CTLine
+        @_spi(CaptionEngine) public let fillLine: CTLine
         /// Stroke-only outline lines, ordered **widest-first** (each carries
         /// its own baked stroke color). Empty when the word has no outline.
-        let strokeLines: [CTLine]
+        @_spi(CaptionEngine) public let strokeLines: [CTLine]
         /// Mixed letters: one seeded cut-out per character (font, ink,
         /// chip, tilt all baked). `nil` for normal words — the renderer takes
         /// the per-character path only when this is present.
-        let charSlots: [CharSlot]?
+        @_spi(CaptionEngine) public let charSlots: [CharSlot]?
+
+        /// Memberwise; the renderer re-slots a word drawn at another weight.
+        @_spi(CaptionEngine) public init(
+            index: Int,
+            word: Word,
+            lineIndex: Int,
+            frame: CGRect,
+            baselineOrigin: CGPoint,
+            fillLine: CTLine,
+            strokeLines: [CTLine],
+            charSlots: [CharSlot]?
+        ) {
+            self.index = index
+            self.word = word
+            self.lineIndex = lineIndex
+            self.frame = frame
+            self.baselineOrigin = baselineOrigin
+            self.fillLine = fillLine
+            self.strokeLines = strokeLines
+            self.charSlots = charSlots
+        }
     }
 
     /// One mixed letter: its own line (font + ink color baked), placed
     /// relative to the word's baseline origin, with a seeded tilt and paper
     /// chip behind it.
-    struct CharSlot {
+    @_spi(CaptionEngine) public struct CharSlot {
         /// The single-character line, ink color baked in.
-        let line: CTLine
+        @_spi(CaptionEngine) public let line: CTLine
         /// Baseline x offset from the word's baseline origin.
-        let x: CGFloat
+        @_spi(CaptionEngine) public let x: CGFloat
         /// Baseline y offset (seeded jitter) from the word's baseline.
-        let dy: CGFloat
-        let width: CGFloat
-        let ascent: CGFloat
-        let descent: CGFloat
+        @_spi(CaptionEngine) public let dy: CGFloat
+        @_spi(CaptionEngine) public let width: CGFloat
+        @_spi(CaptionEngine) public let ascent: CGFloat
+        @_spi(CaptionEngine) public let descent: CGFloat
         /// Seeded tilt in radians, applied about the letter's center.
-        let tilt: CGFloat
+        @_spi(CaptionEngine) public let tilt: CGFloat
         /// The paper chip behind the letter; `nil` = a bare letter.
-        let chip: StyleColor?
+        @_spi(CaptionEngine) public let chip: StyleColor?
     }
 
-    struct LineSlot {
-        let index: Int
+    @_spi(CaptionEngine) public struct LineSlot {
+        @_spi(CaptionEngine) public let index: Int
         /// The glyph band around all of the line's words.
-        let frame: CGRect
+        @_spi(CaptionEngine) public let frame: CGRect
         /// Indexes (into `words`) of the words on this line.
-        let wordIndexes: [Int]
+        @_spi(CaptionEngine) public let wordIndexes: [Int]
     }
 
-    let words: [WordSlot]
-    let lines: [LineSlot]
+    @_spi(CaptionEngine) public let words: [WordSlot]
+    @_spi(CaptionEngine) public let lines: [LineSlot]
     /// The tight rect around all lines.
-    let blockRect: CGRect
+    @_spi(CaptionEngine) public let blockRect: CGRect
     /// The resolved font pixel size after reference scaling and width fitting.
-    let fontPixelSize: CGFloat
+    @_spi(CaptionEngine) public let fontPixelSize: CGFloat
     /// Pixels per reference point (`renderHeight / 1920`).
-    let referenceScale: CGFloat
+    @_spi(CaptionEngine) public let referenceScale: CGFloat
     /// The vertical distance between line baselines.
-    let lineAdvance: CGFloat
+    @_spi(CaptionEngine) public let lineAdvance: CGFloat
     /// The effective gap between adjacent words, in pixels.
-    let spaceWidth: CGFloat
+    @_spi(CaptionEngine) public let spaceWidth: CGFloat
 }
 
-enum CaptionLayout {
+@_spi(CaptionEngine) public enum CaptionLayout {
 
     /// The reference frame height that style point values are specified at.
-    static let referenceHeight: CGFloat = 1920
+    @_spi(CaptionEngine) public static let referenceHeight: CGFloat = 1920
 
     // MARK: - Layout cache
 
@@ -108,7 +129,7 @@ enum CaptionLayout {
     /// Empties the cache. Call after runtime font registration — a layout
     /// cached against the pre-registration fallback font would otherwise serve
     /// stale glyph metrics until the card or style is edited.
-    static func flush() {
+    @_spi(CaptionEngine) public static func flush() {
         cacheLock.lock(); cache.removeAll(); cacheLock.unlock()
     }
 
@@ -128,7 +149,7 @@ enum CaptionLayout {
     }
 
     /// Lays out a card at the render resolution (cached by its exact inputs).
-    static func layout(
+    @_spi(CaptionEngine) public static func layout(
         card: CaptionCard,
         style: CaptionStyle,
         config: RenderConfig
@@ -471,7 +492,7 @@ enum CaptionLayout {
     /// The exact string a word lays out as (case transform + inline emoji)
     /// — shared with the renderer so re-resolved lines (weight ramps) can
     /// never drift from the layout's text.
-    static func lineText(for word: Word, style: CaptionStyle) -> String {
+    @_spi(CaptionEngine) public static func lineText(for word: Word, style: CaptionStyle) -> String {
         var text = transformed(word.text, transform: style.textTransform)
         if let emoji = word.style?.emoji, !emoji.isEmpty {
             text += " " + emoji
@@ -479,7 +500,7 @@ enum CaptionLayout {
         return text
     }
 
-    static func makeLine(
+    @_spi(CaptionEngine) public static func makeLine(
         _ text: String,
         font: CTFont,
         kern: CGFloat,
@@ -502,11 +523,11 @@ enum CaptionLayout {
         return CTLineCreateWithAttributedString(attributed)
     }
 
-    static func lineWidth(_ line: CTLine) -> CGFloat {
+    @_spi(CaptionEngine) public static func lineWidth(_ line: CTLine) -> CGFloat {
         CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
     }
 
-    static func transformed(_ text: String, transform: TextTransform) -> String {
+    @_spi(CaptionEngine) public static func transformed(_ text: String, transform: TextTransform) -> String {
         switch transform {
         case .none: return text
         case .uppercase: return text.uppercased()
@@ -521,7 +542,7 @@ enum CaptionLayout {
 
 // MARK: - Font Resolution
 
-enum FontResolver {
+@_spi(CaptionEngine) public enum FontResolver {
 
     /// Resolves a `CTFont` for a family + weight, falling back to the system
     /// UI font family when no family is named.
@@ -530,7 +551,7 @@ enum FontResolver {
     /// participates in matching — asking for "Avenir Next" + heavy finds
     /// "AvenirNext-Heavy". CoreText's cascade handles emoji and non-Latin
     /// fallback automatically.
-    static func font(family: String?, weight: FontWeight, size: CGFloat, slant: CGFloat = 0) -> CTFont {
+    @_spi(CaptionEngine) public static func font(family: String?, weight: FontWeight, size: CGFloat, slant: CGFloat = 0) -> CTFont {
         font(family: family, weightTrait: weight.traitValue, size: size, slant: slant)
     }
 
@@ -538,7 +559,7 @@ enum FontResolver {
     /// axis the weight-ramp animation interpolates along. Variable fonts
     /// (San Francisco included) resolve smoothly; static families snap to
     /// the nearest face.
-    static func font(family: String?, weightTrait: CGFloat, size: CGFloat, slant: CGFloat = 0) -> CTFont {
+    @_spi(CaptionEngine) public static func font(family: String?, weightTrait: CGFloat, size: CGFloat, slant: CGFloat = 0) -> CTFont {
         // The system font's hidden family name doesn't weight-match through
         // descriptor MATCHING — apply the trait to the font itself instead
         // (the documented route to weighted San Francisco, and the one that

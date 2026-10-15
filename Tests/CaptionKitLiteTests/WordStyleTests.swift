@@ -12,6 +12,7 @@ import Foundation
 import ImageIO
 import Testing
 import UniformTypeIdentifiers
+@_spi(CaptionEngine) @testable import CaptionCore
 @testable import CaptionKitLite
 
 /// Writes a small two-tone PNG to a temp file and returns its URL, so the

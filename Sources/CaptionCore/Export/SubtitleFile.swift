@@ -1,6 +1,6 @@
 //
 //  SubtitleFile.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
@@ -43,7 +43,7 @@ public enum SubtitleFile {
     ///   - document: The caption document.
     ///   - format: Which sidecar format to write.
     /// - Returns: The document's text.
-    public static func render(document: CaptionDocument, format: Format) -> String {
+    public static func render(document: some CaptionTimeline, format: Format) -> String {
         SubtitleWriter.render(cues(in: document), format: format.shared)
     }
 
@@ -51,7 +51,7 @@ public enum SubtitleFile {
     ///
     /// - Parameter document: The caption document.
     /// - Returns: The cues, with cards swallowed by a removed cut left out.
-    public static func cues(in document: CaptionDocument) -> [SubtitleCue] {
+    public static func cues(in document: some CaptionTimeline) -> [SubtitleCue] {
         let map = document.timeMap
         return document.cards.compactMap { card in
             let start = map.outputTime(forSource: card.start)

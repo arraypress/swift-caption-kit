@@ -5,6 +5,7 @@
 //  Created by David Sherlock on 2026.
 //
 
+@_spi(CaptionEngine) import CaptionCore
 @preconcurrency import AVFoundation
 import CoreGraphics
 import CoreImage
@@ -95,6 +96,12 @@ private final class CaptionExportSession: @unchecked Sendable {
     private let progress: (@Sendable (Double) -> Void)?
 
     private let reader: AVAssetReader
+    /// The sound has a reader of its own. Sharing one reader couples the
+    /// outputs: the video output stops delivering while the audio output's
+    /// buffer is full, and the writer stops taking audio until more video
+    /// arrives to interleave with it — a deadlock that left a render parked in
+    /// `copyNextSampleBuffer` for good. Separate readers buffer independently.
+    private let audioReader: AVAssetReader?
     private let writer: AVAssetWriter
     private let videoOutput: AVAssetReaderVideoCompositionOutput
     private let videoInput: AVAssetWriterInput
@@ -424,16 +431,20 @@ private final class CaptionExportSession: @unchecked Sendable {
                 mix.inputParameters = mixParameters
                 mixOutput.audioMix = mix
             }
-            reader.add(mixOutput)
+            let audioReading = try AVAssetReader(asset: readingAsset)
+            audioReading.add(mixOutput)
+            audioReader = audioReading
             audioOutput = mixOutput
-            let audioIn = AVAssetWriterInput(mediaType: .audio, outputSettings: Self.aacSettings(hint: hint))
+            let audioIn = AVAssetWriterInput(mediaType: .audio, outputSettings: AACSettings.writerSettings(hint: hint))
             audioIn.expectsMediaDataInRealTime = false
             writer.add(audioIn)
             audioInput = audioIn
             totalInputs = 2
         } else if let readerAudioTrack {
             let audioOut = AVAssetReaderTrackOutput(track: readerAudioTrack, outputSettings: nil)
-            reader.add(audioOut)
+            let audioReading = try AVAssetReader(asset: readingAsset)
+            audioReading.add(audioOut)
+            audioReader = audioReading
             audioOutput = audioOut
             let audioIn = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: hint)
             audioIn.expectsMediaDataInRealTime = false
@@ -441,24 +452,10 @@ private final class CaptionExportSession: @unchecked Sendable {
             audioInput = audioIn
             totalInputs = 2
         } else {
+            audioReader = nil
             audioOutput = nil
             audioInput = nil
         }
-    }
-
-    private static func aacSettings(hint: CMFormatDescription?) -> [String: Any] {
-        var sampleRate = 44_100.0
-        var channels = 2
-        if let hint, let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(hint)?.pointee {
-            sampleRate = min(48_000, asbd.mSampleRate)
-            channels = max(1, min(2, Int(asbd.mChannelsPerFrame)))
-        }
-        return [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: channels,
-            AVEncoderBitRateKey: 128_000,
-        ]
     }
 
     func cancel() {
@@ -474,6 +471,11 @@ private final class CaptionExportSession: @unchecked Sendable {
         guard reader.startReading() else {
             writer.cancelWriting()
             throw ExportError.readerFailed(reader.error?.localizedDescription ?? "could not start")
+        }
+        if let audioReader, !audioReader.startReading() {
+            reader.cancelReading()
+            writer.cancelWriting()
+            throw ExportError.readerFailed(audioReader.error?.localizedDescription ?? "could not start")
         }
         writer.startSession(atSourceTime: .zero)
 
@@ -496,7 +498,7 @@ private final class CaptionExportSession: @unchecked Sendable {
     // MARK: - Pumps
 
     private func pumpVideo() {
-        while videoInput.isReadyForMoreMediaData {
+        while !hasFailed, videoInput.isReadyForMoreMediaData {
             if isCancelled { return abort(with: CancellationError()) }
             guard let sample = videoOutput.copyNextSampleBuffer() else {
                 if reader.status == .failed {
@@ -525,11 +527,11 @@ private final class CaptionExportSession: @unchecked Sendable {
 
     private func pumpAudio() {
         guard let audioOutput, let audioInput else { return }
-        while audioInput.isReadyForMoreMediaData {
+        while !hasFailed, audioInput.isReadyForMoreMediaData {
             if isCancelled { return abort(with: CancellationError()) }
             guard let sample = audioOutput.copyNextSampleBuffer() else {
-                if reader.status == .failed {
-                    return abort(with: ExportError.readerFailed(reader.error?.localizedDescription ?? "unknown"))
+                if let audioReader, audioReader.status == .failed {
+                    return abort(with: ExportError.readerFailed(audioReader.error?.localizedDescription ?? "unknown"))
                 }
                 audioInput.markAsFinished()
                 return inputFinished()
@@ -733,6 +735,14 @@ private final class CaptionExportSession: @unchecked Sendable {
         return cancelled
     }
 
+    /// Set once ``abort(with:)`` has run: both pumps stop touching the
+    /// reader and writer from then on.
+    private var hasFailed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return terminalError != nil
+    }
+
     private func inputFinished() {
         lock.lock()
         finishedInputs += 1
@@ -759,9 +769,18 @@ private final class CaptionExportSession: @unchecked Sendable {
         lock.unlock()
         guard !alreadyFailed else { return }
 
-        reader.cancelReading()
-        writer.cancelWriting()
-        takeContinuation()?.resume(throwing: error)
+        // The two pumps run on their own queues, and the one that did not
+        // fail may be mid-copy or mid-append. Cancel the reader and writer
+        // only after each queue has drained its current pass (both now stop
+        // at `hasFailed`), so neither touches them while they tear down.
+        videoQueue.async { [self] in
+            audioQueue.async { [self] in
+                reader.cancelReading()
+                audioReader?.cancelReading()
+                writer.cancelWriting()
+                takeContinuation()?.resume(throwing: error)
+            }
+        }
     }
 
     private func takeContinuation() -> CheckedContinuation<Void, Error>? {

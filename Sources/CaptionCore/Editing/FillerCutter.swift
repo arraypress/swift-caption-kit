@@ -1,6 +1,6 @@
 //
 //  FillerCutter.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
@@ -59,7 +59,7 @@ public struct FillerCutRules: Codable, Equatable, Sendable {
 ///    but they still leave a gap between word timestamps; long gaps are cut.
 ///
 /// The result is a *proposal*: the app shows it on the timeline and the user
-/// accepts/adjusts before it lands in ``CaptionDocument/cuts``.
+/// accepts/adjusts before it lands in the document's `cuts`.
 ///
 /// ```swift
 /// let result = FillerCutter.detect(in: words, rules: FillerCutRules(

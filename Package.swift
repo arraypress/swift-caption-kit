@@ -23,6 +23,14 @@ let package = Package(
             name: "CaptionStyles",
             targets: ["CaptionStyles"]
         ),
+        // Everything both caption engines run the same way: words and cards,
+        // grouping, the edit map, the layout and motion helpers, the
+        // footage filters, sidecar subtitles and the overlay writer.
+        // swift-caption-kit builds on it, so each of these exists once.
+        .library(
+            name: "CaptionCore",
+            targets: ["CaptionCore"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/arraypress/swift-subtitle-kit.git", from: "0.1.0"),
@@ -41,16 +49,23 @@ let package = Package(
             ]
         ),
         .target(
-            name: "CaptionKitLite",
+            name: "CaptionCore",
             dependencies: [
                 "CaptionStyles",
                 .product(name: "SubtitleKit", package: "swift-subtitle-kit"),
+            ]
+        ),
+        .target(
+            name: "CaptionKitLite",
+            dependencies: [
+                "CaptionCore",
+                "CaptionStyles",
                 .product(name: "DepthBlur", package: "swift-depth-blur"),
             ]
         ),
         .testTarget(
             name: "CaptionKitLiteTests",
-            dependencies: ["CaptionKitLite", "CaptionStyles"]
+            dependencies: ["CaptionKitLite", "CaptionCore", "CaptionStyles"]
         ),
     ]
 )

@@ -1,6 +1,6 @@
 //
 //  Cut.swift
-//  CaptionKitLite
+//  CaptionCore
 //
 //  Created by David Sherlock on 2026.
 //
