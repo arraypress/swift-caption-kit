@@ -1,15 +1,34 @@
-# CaptionKitLite
+# CaptionKit
 
 The caption engine: transcript in, styled animated captions burned into video
-out. **Headless** — no UI frameworks, no network, no AI. The whole pipeline
-runs in a unit test or a command-line tool.
+out. **Headless** — no UI frameworks, no network, no generative AI. The whole
+pipeline runs in a unit test or a command-line tool, and every automatic pass
+is checked by a measurement rather than by somebody looking.
 
 ```
 word-level transcript → CaptionDocument → rendered frame(s) → export
 ```
 
 Three small arraypress packages (subtitle formats, depth blur, recipe rules);
-everything else is CoreGraphics, CoreImage, CoreText, Vision and AVFoundation.
+everything else is CoreGraphics, CoreImage, CoreText, NaturalLanguage, Vision
+and AVFoundation.
+
+**One library, captions only.** This is the merge of the open
+`swift-caption-kit-lite` and the private editor engine behind the Caption
+Studio app (both retired, their history bundled; the old engine's repository
+is `swift-caption-kit-archived`). What came across is what works with no one
+watching — automatic emphasis and emoji, a hook title, captions behind the
+speaker where they stay legible, translation re-timing, the platform safe
+zones. What stayed behind needs an eye or is not a caption: stickers, B-roll,
+music and sound effects, colour grading, face retouching, the generative AI
+passes, the editor UI.
+
+## Install
+
+```swift
+.package(url: "https://github.com/arraypress/swift-caption-kit.git", from: "0.7.0")
+// .product(name: "CaptionKit", package: "swift-caption-kit")
+```
 
 ## The parity rule
 
@@ -37,10 +56,11 @@ Nothing extra to learn, and no format to invent.
 ## The presets are data: `CaptionStyles`
 
 The style model (`CaptionStyle`, `WordStyle`, `StyleColor`, `GroupingRules`)
-and the 50 presets live in their own product, `CaptionStyles`, which
-`CaptionKitLite` re-exports. It is the one copy: the fuller
-`swift-caption-kit` depends on it rather than carrying its own (it used to
-carry a byte-identical 904-line `StylePresets.swift` and the four model files).
+and the 50 presets live in their own target, `CaptionStyles`, which
+`CaptionKit` re-exports. It stays a separate target so the style data builds
+without AVFoundation or Vision, but it is not a separate product any more: the
+only other engine that imported it on its own is archived, and one product is
+one less thing to keep in step.
 
 The presets are a JSON catalogue compiled in as a Swift string — not a
 resource bundle, which breaks beside a Homebrew binary reached through a
@@ -75,26 +95,17 @@ decodes.
 
 **Measured:** all 50 presets, decoded from the JSON, encode byte-identical to
 the Swift presets they replaced (every field, every Double), as do the
-featured flags, grouping hints and word looks; and `swift-caption-kit` renders
-200/200 frames identical to this engine across the 50 presets × 4 moments.
+featured flags, grouping hints and word looks.
 
-## The shared engine: `CaptionCore`
+## The engine underneath: `CaptionCore`
 
-Everything both caption engines do the same way is a third product,
-`CaptionCore`, which `CaptionKitLite` also re-exports: `Word`, `CaptionCard`,
-`Cut`, `RenderConfig`, `HighlightRule`, `FaceCensor`; `CaptionGrouper`,
-`TimeMap`, `FillerCutter`, `ProfanityFilter`, `SpeakerAssign`,
-`AutoPlacement`, `FaceTrack`; `CaptionLayout`, `Reframe`, `AutoMotion`; the
-blur, face-cover and gradient filters; `ExportSettings`, `SubtitleFile` and
-`OverlayExporter`. `swift-caption-kit` builds on it instead of carrying its own
-copies (it used to carry 24 byte-identical files and a drifted
-`ExportSettings`).
-
-What stays per engine is the document, the renderer and the burn-in exporter.
-`SubtitleFile` and `OverlayExporter` take any `CaptionTimeline` — a protocol
-each engine's `CaptionDocument` adopts by drawing with its own renderer — so
-there is one writer for both. The layout and timing helpers the renderers share
-are SPI (`@_spi(CaptionEngine) import CaptionCore`), not public API.
+`Word`, `CaptionCard`, `Cut`, `RenderConfig`, `HighlightRule`, `FaceCensor`;
+`CaptionGrouper`, `TimeMap`, `FillerCutter`, `ProfanityFilter`,
+`SpeakerAssign`, `AutoPlacement`, `FaceTrack`; `CaptionLayout`, `Reframe`,
+`AutoMotion`; the blur, face-cover and gradient filters; `ExportSettings`,
+`SubtitleFile` and `OverlayExporter` live in the `CaptionCore` target, which
+`CaptionKit` re-exports. The layout and timing helpers the renderer uses are
+SPI (`@_spi(CaptionEngine) import CaptionCore`), not public API.
 
 **Grouping** — `CaptionGrouper` turns a word stream into readable cards by
 pause, line and character rules; `reflowLines` re-lays a card without touching
@@ -126,7 +137,7 @@ Media"), so every cut export of such a clip failed.
 ## Usage
 
 ```swift
-import CaptionKitLite
+import CaptionKit
 
 let words = [Word(text: "hello", start: 0.0, end: 0.4)]   // from any transcriber
 let cards = CaptionGrouper.group(words, rules: GroupingRules())
@@ -157,6 +168,148 @@ let result = FillerCutter.detect(
 )
 document.cuts = result.cuts
 ```
+
+## The automatic passes — no eye needed
+
+Each of these decides by rule, gives the same answer every run, and reports
+what it decided as data a test or `caption check` can hold it to.
+
+The fixture for the numbers below: two generated portraits (9:16, a dark
+studio wall and a white overcast sky) with a slow zoom, under 12 seconds of a
+`say` voice, transcribed by Apple's recogniser — 31 words, no punctuation.
+
+### Emphasis — `EmphasisSuggester`
+
+```swift
+let (cards, count) = EmphasisSuggester.emphasize(cards: document.cards)
+```
+
+One word per card — the one that carries it — chosen by on-device
+part-of-speech tagging (NaturalLanguage): a number scores 4, a noun 3, an
+adjective 2.2 (the floor), a long word a little more, anything under three
+letters nothing. It gets the next colour of a rotating palette as an ordinary
+`WordStyle`. A word somebody already coloured (a recipe's `words.emphasis`) is
+left alone. On the fixture: 5 cards, 5 words — "habits",
+"business", "meeting", "travel", "win" — the same on every run.
+
+### Emoji — `EmojiSuggester`, `EmojiCatalog`
+
+```swift
+let (cards, count) = EmojiSuggester.suggest(cards: document.cards)
+```
+
+A keyword gets its emoji inline, right after it in the caption line
+(`WordStyle.emoji`), popping on with the word. The table is data — 65 emoji,
+273 keywords, written for this library — compiled in as JSON
+(`EmojiCatalogText`) and checked by a test: one emoji each, lowercase letters,
+no word listed twice. Words that are mostly filler in speech ("right", "look",
+"think", "time") are left out on purpose. At most one per card and four
+seconds apart; never on a censored word. On the fixture: "business 💼" and
+"money 💰" ("coffee" fell inside the four seconds).
+
+### A hook title — `HookBuilder`, `HookTemplates`
+
+```swift
+let made = await HookBuilder.build(text: "Three things nobody tells you", document: document)
+document.hook = made.hook          // drawn by the same renderer, above the captions
+print(made.report)                 // where it went, and what was measured
+```
+
+An opening title over the first seconds, placed by rule and measured:
+
+- **Where:** inside the platform safe zone within the canvas safe area
+  (`PlatformZones`), clear of every face found in the frames it covers and of
+  every caption on screen with it, as near the upper third as that allows. If it
+  does not fit the type steps down (to 60%); if nothing clears, it takes the
+  least-overlapping height and the report says `placed: false`.
+- **Contrast:** the footage behind it is measured — WCAG relative luminance,
+  the worst-case 90th percentile (10th for dark type) over five frames. Below
+  WCAG's 3:1 for large text, a plate goes behind the type, just dark enough to
+  reach 4.5:1 (at most 85%).
+- **Read back:** `HookBuilder.readBack` draws the finished frame — footage,
+  captions, title — and counts the title's words on-device text recognition
+  reads.
+
+Three looks as data (`bold`, `boxed`, `clean`), the same partial-style JSON the
+presets use. `HookText.automatic` takes the opening sentence, or the first
+card when the transcript carries no punctuation (Apple's recogniser often
+gives none), cut to eight words.
+
+Measured on the fixture: on the dark studio wall the title went above the
+face at 60% size, contrast 8.2:1, no plate;
+on the white sky `bold` and `clean` got an 85% black plate (5.3:1) and
+`boxed` needed none (14.7:1). In every case 0% over the face, 0% over the
+captions, inside the safe zone, and text recognition read back 100% of the
+title — on the rendered frame and again on a frame decoded from the encoded
+video.
+
+### Captions behind the speaker — `SubjectCoverage`, `SubjectMasker`
+
+```swift
+let measured = await SubjectCoverage.measure(document)
+document.behindSubject = BehindSubject(cards: SubjectCoverage.behindCards(measured))
+```
+
+The person is laid back over the caption from the clean frame (Vision person
+segmentation, `SubjectMasker` — the same masks in the export, the preview and
+the measurement), so the words sit in the scene. Only where they stay legible:
+each card is sampled at three moments, each word's share under the person
+taken, and a card goes behind only if its worst word is covered no more than
+`SubjectCoverage.maximumCoverage` — **5%**, measured:
+
+| Word covered by the person | Words | Read back behind |
+|---|---|---|
+| 0% | 7,800 | 99.6% |
+| 0.1–2% | 528 | 96.4% |
+| 2–5% | 401 | 98.0% |
+| 5–8% | 315 | 83.5% |
+| 8–10% | 178 | 80.3% |
+| 10–12% | 153 | 63.4% |
+| 15–20% | 385 | 32.7% |
+| 25–30% | 447 | 8.3% |
+| 50–100% | 13,663 | 0.1% |
+
+Six presets (karaoke, hormozi, boxed, clean-pop, beast, minimal), twelve
+sentences, twenty heights, over four generated portraits; only the 26,181
+words text recognition read with the caption in front are counted, so a word
+lost behind is the person's doing. The knee is at 5%: by style, words covered
+up to 5% read back 96–99%, up to 10% 92–96%, up to 15% 88–93%.
+
+End to end on the fixture (hormozi, two words a card, high in the frame so the
+speaker's head crosses the captions as the shot slowly zooms): 7 of 16 cards
+went behind (worst word 2.4% covered) and 9 stayed in front (5.4–46%). Read
+back off frames decoded from the rendered video, the behind cards gave 14 of
+14 words; the composite really happened (1,043 pixels differ from a plain
+render on the 2.4% card, 0 on a front card).
+
+### Translation re-timing — `TranslationRetimer`
+
+Translation changes the word count, so word timings cannot be copied across.
+Each caption keeps its spoken span and the translated words share it in
+proportion to their length (plus one, so a short word still gets a beat):
+
+```swift
+TranslationRetimer.expanded(words)                 // any entry holding a phrase becomes timed words
+TranslationRetimer.retimed(card: card, translatedText: "Así que esto es gratis")
+```
+
+An entry of one word is returned exactly as it was, so a per-word transcript
+passes through untouched; scripts written without spaces (Chinese, Japanese,
+Thai, Lao, Khmer, Myanmar, Tibetan) go through on-device word segmentation.
+The translating itself is the fleet's `translate` tool — see the `caption` CLI.
+Measured through the real pipeline (`caption transcribe --lines`, `translate`
+to Spanish, `caption render --words`): 31 English words in 5 captions became
+33 Spanish words; all 5 captions kept their exact start and end, text and
+order, and the words ran back to back.
+
+### Platform safe zones — `Platform`, `PlatformZones`
+
+Which parts of a 9:16 frame Instagram stories and reels, TikTok and YouTube
+Shorts cover with their own buttons, and the rectangle left clear
+(`PlatformZones.safeRect(for:)`, or `safeRectForAll` for every platform at
+once). The numbers came from the Caption Studio app's pre-publish overlay:
+measured off the apps' layouts, rounded to whole percents. The hook title uses
+them today.
 
 ## Measured on real speech: fillers, pauses and the splice
 
@@ -192,16 +345,18 @@ fillers on and pauses over 1 s, then `Splicer`, via `caption cut --verify`:
 
 ## What it is not
 
-This is the caption engine, not an editor. There are no stickers, titles,
+This is the caption engine, not an editor. There are no stickers,
 picture-in-picture B-roll, appended clips, music beds, sound effects, colour
-grading, or AI passes — those belong to the application built on top.
+grading, face retouching or generative AI passes — those stayed with the
+retired editor engine, because each one is judged by looking, or is not a
+caption. (Music ducking and picture-in-picture belong to `vid`.)
 
 Two consequences worth knowing:
 
-**Projects from a fuller engine survive a round-trip.** A document carrying
-stickers or a grade decodes here, renders its captions, and saves with those
-keys **intact** — see `PreservedValue`. This engine never reads them and never
-drops them, which also means keys added by a future version survive.
+**Projects from the retired editor engine survive a round-trip.** A document
+carrying stickers or a grade decodes here, renders its captions, and saves with
+those keys **intact** — see `PreservedValue`. This engine never reads them and
+never drops them, which also means keys added by a future version survive.
 
 **Cut treatments are all here.** `none`, `dipToBlack`, `dipToWhite` and
 `punchIn` are geometry the exporter computes; `whipPan`, `zoomBlur` and

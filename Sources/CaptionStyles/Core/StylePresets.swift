@@ -5,9 +5,8 @@
 //  Created by David Sherlock on 2026.
 //
 //  The built-in caption style catalogue — data (``PresetCatalogText``), not
-//  code — shared by every app shell (macOS, iOS) and both caption engines.
-//  Each renderer's tests draw every preset so one can never silently stop
-//  rendering.
+//  code. The renderer's tests draw every preset so one can never silently
+//  stop rendering.
 //
 
 import Foundation

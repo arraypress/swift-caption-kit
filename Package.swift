@@ -4,32 +4,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "CaptionKitLite",
+    name: "CaptionKit",
     platforms: [
         .macOS(.v26),
         .iOS(.v26)
     ],
     products: [
-        // The caption engine — model, grouping, renderer, export. Headless:
-        // no UI frameworks, no network, no AI. The whole pipeline runs in a
-        // unit test or a command-line tool.
+        // The caption engine — model, grouping, renderer, export, and the
+        // automatic passes (emphasis, emoji, hook title, translation
+        // re-timing). Headless: no UI frameworks, no network, no generative
+        // AI. The whole pipeline runs in a unit test or a command-line tool.
+        //
+        // One product. CaptionStyles (the style model and presets) and
+        // CaptionCore (words, cards, layout, export plumbing) stay separate
+        // TARGETS — they keep the style data free of AVFoundation and Vision —
+        // but CaptionKit re-exports both, and nothing outside this package
+        // imports them on their own any more: the editor engine that did is
+        // archived.
         .library(
-            name: "CaptionKitLite",
-            targets: ["CaptionKitLite"]
-        ),
-        // The style model and the built-in presets (as JSON data) alone —
-        // what swift-caption-kit shares, so there is one copy of each.
-        .library(
-            name: "CaptionStyles",
-            targets: ["CaptionStyles"]
-        ),
-        // Everything both caption engines run the same way: words and cards,
-        // grouping, the edit map, the layout and motion helpers, the
-        // footage filters, sidecar subtitles and the overlay writer.
-        // swift-caption-kit builds on it, so each of these exists once.
-        .library(
-            name: "CaptionCore",
-            targets: ["CaptionCore"]
+            name: "CaptionKit",
+            targets: ["CaptionKit"]
         ),
     ],
     dependencies: [
@@ -56,7 +50,7 @@ let package = Package(
             ]
         ),
         .target(
-            name: "CaptionKitLite",
+            name: "CaptionKit",
             dependencies: [
                 "CaptionCore",
                 "CaptionStyles",
@@ -64,8 +58,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "CaptionKitLiteTests",
-            dependencies: ["CaptionKitLite", "CaptionCore", "CaptionStyles"]
+            name: "CaptionKitTests",
+            dependencies: ["CaptionKit", "CaptionCore", "CaptionStyles"]
         ),
     ]
 )

@@ -11,8 +11,9 @@ import Foundation
 /// What the shared writers need from a caption document: its cards, its
 /// canvas, its edit map and a way to draw its captions.
 ///
-/// Each engine's own `CaptionDocument` conforms, so ``SubtitleFile`` and
-/// ``OverlayExporter`` exist once and still draw with that engine's renderer.
+/// CaptionKit's `CaptionDocument` conforms, drawing with its renderer, so
+/// ``SubtitleFile`` and ``OverlayExporter`` stay free of the renderer and
+/// testable with any timeline.
 public protocol CaptionTimeline: Sendable {
 
     /// The caption cards, on the source timeline.
