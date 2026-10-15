@@ -59,7 +59,10 @@ let package = Package(
         ),
         .testTarget(
             name: "CaptionKitTests",
-            dependencies: ["CaptionKit", "CaptionCore", "CaptionStyles"]
+            dependencies: ["CaptionKit", "CaptionCore", "CaptionStyles"],
+            // One generated portrait (FLUX.2 Klein, no real person), for the
+            // sticker placement tests to find a face in.
+            resources: [.copy("Resources")]
         ),
     ]
 )

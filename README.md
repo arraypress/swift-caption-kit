@@ -338,6 +338,33 @@ once). The numbers came from the Caption Studio app's pre-publish overlay:
 measured off the apps' layouts, rounded to whole percents. The hook title uses
 them today.
 
+### Stickers, placed by rule — `StickerPlacer`, `StickerCheck`
+
+An agent says what (`StickerSource`: an emoji, a picture with its
+transparency, or a GIF / animated PNG / short video — alpha kept), when
+(`StickerTiming`: the *n*th time a word is said, or a span of seconds), how it
+moves (`StickerEntrance` — the word entrances' own curves — and `StickerLoop`)
+and how big (a fraction of the frame's width). Never where. `StickerPlacer`
+puts each one inside the platform safe zone, clear of every head in the frames
+it covers (Vision's brow-to-chin face box grown to take in the forehead and
+hair), of the caption block at every moment it shares the screen, of the hook
+title and of other stickers; spots off the person's body are tried first. An
+optional coarse anchor (`upper-right`, `bottom`, …) is a preference within a
+quarter of the frame, still checked. When nothing fits it shrinks in steps
+(100, 85, 70, 55 %) and then refuses, naming what blocked it. Restrained by
+default (`StickerRules`): one on screen at a time, two seconds clear between
+them. `StickerCheck` re-measures every placed sticker from the footage —
+safe-zone containment, head / caption / hook overlap — and confirms it was
+drawn: the share of its box's pixels that change with it, at three moments.
+
+```swift
+let placed = try await StickerPlacer.place(
+    [StickerRequest(source: .emoji("☕️"), timing: .word("coffee"), loop: .float)],
+    in: document, platform: .tiktok)
+document.placedStickers = placed
+let reports = await StickerCheck.measure(document, platform: .tiktok)  // ok, overlaps, drawn
+```
+
 ## Measured on real speech: fillers, pauses and the splice
 
 Two public-domain recordings: five minutes of a 1985 oral history (Hanford
@@ -372,7 +399,7 @@ fillers on and pauses over 1 s, then `Splicer`, via `caption cut --verify`:
 
 ## What it is not
 
-This is the caption engine, not an editor. There are no stickers,
+This is the caption engine, not an editor. There are no hand-placed stickers,
 picture-in-picture B-roll, appended clips, music beds, sound effects, colour
 grading, face retouching or generative AI passes — those stayed with the
 retired editor engine, because each one is judged by looking, or is not a
@@ -381,7 +408,8 @@ caption. (Music ducking and picture-in-picture belong to `vid`.)
 Two consequences worth knowing:
 
 **Projects from the retired editor engine survive a round-trip.** A document
-carrying stickers or a grade decodes here, renders its captions, and saves with
+carrying the editor's stickers (its `stickers` key — rule-placed ones are
+`placedStickers`) or a grade decodes here, renders its captions, and saves with
 those keys **intact** — see `PreservedValue`. This engine never reads them and
 never drops them, which also means keys added by a future version survive.
 

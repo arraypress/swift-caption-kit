@@ -144,6 +144,11 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
     /// ``SubjectCoverage``, which decides which cards may go.
     public var behindSubject: BehindSubject?
 
+    /// Stickers where ``StickerPlacer`` put them, drawn above the captions,
+    /// or `nil` for none. Its own key, `placedStickers`: the retired editor's
+    /// `stickers` key is a different shape and rides through ``preserved``.
+    public var placedStickers: [PlacedSticker]?
+
     /// Creates a document.
     public init(
         videoURL: URL? = nil,
@@ -202,6 +207,7 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
         case behindSubject
         case speakerNames
         case secondaryWords
+        case placedStickers
     }
 
     /// The keys this type models, so ``PreservedValue/unmodelledFields(from:known:)``
@@ -247,6 +253,7 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
         behindSubject = try container.decodeIfPresent(BehindSubject.self, forKey: .behindSubject)
         speakerNames = try container.decodeIfPresent([String].self, forKey: .speakerNames)
         secondaryWords = try container.decodeIfPresent([Word].self, forKey: .secondaryWords)
+        placedStickers = try container.decodeIfPresent([PlacedSticker].self, forKey: .placedStickers)
 
         // Everything another writer put there that this one does not model.
         preserved = PreservedValue.unmodelledFields(from: decoder, known: Self.modelledKeys)
@@ -288,6 +295,7 @@ public struct CaptionDocument: Codable, Equatable, Sendable {
         try container.encodeIfPresent(behindSubject, forKey: .behindSubject)
         try container.encodeIfPresent(speakerNames, forKey: .speakerNames)
         try container.encodeIfPresent(secondaryWords, forKey: .secondaryWords)
+        try container.encodeIfPresent(placedStickers, forKey: .placedStickers)
 
         // Last, so a modelled key always wins over a stale preserved copy of
         // the same name.
