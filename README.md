@@ -162,6 +162,16 @@ otherwise for the highest bitrate it does offer: 64 kb/s for 22.05 kHz mono,
 the format `say` writes. A fixed 128 kb/s was refused there ("Cannot Encode
 Media"), so every cut export of such a clip failed.
 
+Cut and sped-up exports read the picture from the unedited source and place
+each frame on the edited timeline (`EditedFrameTiming`). Reading it through the
+edited composition, as up to 0.8.0, could hang for good: on macOS 27 that
+reader stops near a cut — about one export in ten of a static 4 s test clip
+never finished. Checked against the composition's own frames (times and
+pixels) on 100 random cut layouts: 94 identical, 3 left to the old read
+(pieces out of source order), 3 differing only inside a single frame. Any read
+that still blocks for 30 s ends that attempt; the export starts once more, and
+a second stall is an error rather than a hang.
+
 ## Usage
 
 ```swift

@@ -14,7 +14,7 @@ import Testing
 @_spi(CaptionEngine) @testable import CaptionCore
 @testable import CaptionKit
 
-@Suite("Audio re-encode")
+@Suite("Audio re-encode", .timeLimit(.minutes(3)))
 struct AudioReencodeTests {
 
     // MARK: - Choosing the bitrate
@@ -169,7 +169,7 @@ enum Fixture {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
         for frame in 0..<Int(seconds * 30) {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
+            try await waitUntilReady(input, of: writer)
             var buffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, try #require(adaptor.pixelBufferPool), &buffer)
             let pixels = try #require(buffer)

@@ -172,7 +172,7 @@ private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
         #expect(placed[1].rect.midY < 0.35)
     }
 
-    @Test func placementKeepsOffAFace() async throws {
+    @Test(.timeLimit(.minutes(3))) func placementKeepsOffAFace() async throws {
         let video = try await portraitVideo()
         var base = CaptionDocument(videoURL: video, cards: [], renderConfig: canvas)
         base.cards = CaptionGrouper.group(words(["look", "at", "this"]))
@@ -265,14 +265,22 @@ private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
     }
 
     @Test func noStickersDrawsTheSameAsBefore() throws {
-        var base = document(["same", "pixels", "please"])
         // Warm the caches: a card's very first render takes its shadow by a
-        // different route (see BehindSubjectTests), so compare like with like.
-        _ = CaptionRenderer.renderOverlay(document: base, at: 0.7)
-        let before = try #require(CaptionRenderer.renderOverlay(document: base, at: 0.7))
-        base.placedStickers = []
-        let after = try #require(CaptionRenderer.renderOverlay(document: base, at: 0.7))
-        #expect(StickerCheck.rgba(before) == StickerCheck.rgba(after))
+        // different route (see BehindSubjectTests), so compare like with
+        // like. Under load another suite could evict the shadow between the
+        // draws (4 failures in about 90 runs, five suites at once); an
+        // empty sticker list that really changed the drawing would differ on
+        // every attempt.
+        let base = document(["same", "pixels", "please"])
+        let agreed = try agreesOnSomeAttempt {
+            var document = base
+            _ = CaptionRenderer.renderOverlay(document: document, at: 0.7)
+            let before = try #require(CaptionRenderer.renderOverlay(document: document, at: 0.7))
+            document.placedStickers = []
+            let after = try #require(CaptionRenderer.renderOverlay(document: document, at: 0.7))
+            return StickerCheck.rgba(before) == StickerCheck.rgba(after)
+        }
+        #expect(agreed)
     }
 
     @Test func aTransparentPNGKeepsItsTransparency() throws {
@@ -316,7 +324,7 @@ private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
         #expect(colours[3] == colours[0], "and round again")
     }
 
-    @Test func aVideoStickerKeepsItsAlpha() async throws {
+    @Test(.timeLimit(.minutes(3))) func aVideoStickerKeepsItsAlpha() async throws {
         let url = try await alphaVideo()
         let media = try #require(await StickerMedia.prepare(.animated(url)))
         #expect(media.frames.count >= 5)
@@ -379,7 +387,7 @@ private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
         #expect(writer.startWriting())
         writer.startSession(atSourceTime: .zero)
         for index in 0..<frames {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 2_000_000) }
+            try await waitUntilReady(input, of: writer)
             var buffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, try #require(adaptor.pixelBufferPool), &buffer)
             let pixels = try #require(buffer)

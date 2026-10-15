@@ -11,6 +11,7 @@ import CoreGraphics
 import CoreImage
 import DepthBlur
 import Foundation
+import Synchronization
 
 /// Burns captions into a video with a streaming decode → composite → encode
 /// pass.
@@ -31,6 +32,10 @@ import Foundation
 /// }
 /// ```
 public enum CaptionExporter {
+
+    /// Reads that stalled past ``CaptionExportSession/stallLimit`` in this
+    /// process — for tests, which must tell a retried stall from a slow run.
+    static let stalls = Atomic<Int>(0)
 
     /// Exports the document's video with captions burned in.
     ///
@@ -68,21 +73,38 @@ public enum CaptionExporter {
             )
         }
 
-        let session = try await CaptionExportSession(
-            document: document,
-            videoURL: videoURL,
-            outputURL: outputURL,
-            settings: settings,
-            depthModelURL: depthModelURL,
-            progress: progress
-        )
-        try await withTaskCancellationHandler {
-            try await session.run()
-        } onCancel: {
-            session.cancel()
+        // A read that stalls (see `CaptionExportSession.stallLimit`) gets
+        // one fresh start; a second stall is an error, never a hang.
+        for attempt in 1...2 {
+            let session = try await CaptionExportSession(
+                document: document,
+                videoURL: videoURL,
+                outputURL: outputURL,
+                settings: settings,
+                depthModelURL: depthModelURL,
+                progress: progress
+            )
+            do {
+                try await withTaskCancellationHandler {
+                    try await session.run()
+                } onCancel: {
+                    session.cancel()
+                }
+                return
+            } catch is ReaderStall {
+                stalls.add(1, ordering: .relaxed)
+                try? FileManager.default.removeItem(at: outputURL)
+                if attempt == 2 {
+                    throw ExportError.readerFailed(
+                        "the video reader stopped delivering frames for \(Int(CaptionExportSession.stallLimit)) s, twice")
+                }
+            }
         }
     }
 }
+
+/// A sample read that blocked past ``CaptionExportSession/stallLimit``.
+struct ReaderStall: Error {}
 
 // MARK: - Session
 
@@ -108,6 +130,19 @@ private final class CaptionExportSession: @unchecked Sendable {
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
     private let audioOutput: AVAssetReaderOutput?
     private let audioInput: AVAssetWriterInput?
+
+    /// With cuts, the video is read from the unedited source and each frame
+    /// placed on the edited timeline here (see ``EditedFrameTiming`` for why
+    /// the edited composition's video is not read). `nil` when there is no
+    /// edit, or one it cannot place: then frames keep their own times.
+    private var frameTiming: EditedFrameTiming?
+    /// Where the source video ends — the span of its last frame.
+    private let sourceVideoEnd: CMTime
+    /// The last source frame read, waiting for the next to know its span.
+    private var heldFrame: (buffer: CVPixelBuffer, start: CMTime)?
+    /// Source frames placed on the output timeline, not yet written.
+    private var placedFrames: [(buffer: CVPixelBuffer, time: CMTime)] = []
+    private var videoSourceDone = false
 
     private let durationSeconds: Double
     private let sourceSize: CGSize
@@ -140,6 +175,15 @@ private final class CaptionExportSession: @unchecked Sendable {
     private var terminalError: Error?
     private var cancelled = false
     private var finished: CheckedContinuation<Void, Error>?
+
+    /// How long one `copyNextSampleBuffer` may block before the export is
+    /// called stalled. AVFoundation's reader can stop for good (seen with
+    /// several exports in one process); a frame never takes this long.
+    static let stallLimit: TimeInterval = 30
+    /// When the pump now inside `copyNextSampleBuffer` entered it.
+    private var videoReadSince: DispatchTime?
+    private var audioReadSince: DispatchTime?
+    private var watchdog: DispatchSourceTimer?
 
     init(
         document: CaptionDocument,
@@ -230,6 +274,7 @@ private final class CaptionExportSession: @unchecked Sendable {
 
         let readingAsset: AVAsset
         let readerVideoTrack: AVAssetTrack
+        var timing: EditedFrameTiming?
         var readerAudioTrack: AVAssetTrack?
         var mixTracks: [AVAssetTrack] = []
         var mixParameters: [AVMutableAudioMixInputParameters] = []
@@ -363,6 +408,9 @@ private final class CaptionExportSession: @unchecked Sendable {
 
             readingAsset = spliced
             readerVideoTrack = videoTrack
+            timing = EditedFrameTiming(mappings: videoTrack.segments
+                .filter { !$0.isEmpty }
+                .map { (source: $0.timeMapping.source, target: $0.timeMapping.target) })
             readerAudioTrack = audioTrack
             durationSeconds = cursor.seconds
         } else {
@@ -372,14 +420,23 @@ private final class CaptionExportSession: @unchecked Sendable {
             durationSeconds = sourceDuration
         }
 
+        // The picture comes from the unedited source whenever the edit can be
+        // placed frame by frame (`EditedFrameTiming`): an edited composition's
+        // video reader can stall for good near a cut. The sound still plays
+        // through the edited composition.
+        frameTiming = timing
+        sourceVideoEnd = try await sourceVideoTrack.load(.timeRange).end
+        let videoAsset: AVAsset = timing == nil ? readingAsset : sourceAsset
+        let videoTrack: AVAssetTrack = timing == nil ? readerVideoTrack : sourceVideoTrack
+
         // A properties-based video composition bakes the track's preferred
         // transform, so rotated phone footage arrives upright.
-        let composition = try await AVVideoComposition.videoComposition(withPropertiesOf: readingAsset)
+        let composition = try await AVVideoComposition.videoComposition(withPropertiesOf: videoAsset)
         sourceSize = composition.renderSize
 
-        reader = try AVAssetReader(asset: readingAsset)
+        reader = try AVAssetReader(asset: videoAsset)
         let output = AVAssetReaderVideoCompositionOutput(
-            videoTracks: [readerVideoTrack],
+            videoTracks: [videoTrack],
             videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         )
         output.videoComposition = composition
@@ -486,6 +543,7 @@ private final class CaptionExportSession: @unchecked Sendable {
             lock.lock()
             finished = continuation
             lock.unlock()
+            startWatchdog()
 
             videoInput.requestMediaDataWhenReady(on: videoQueue) { [weak self] in
                 self?.pumpVideo()
@@ -503,15 +561,15 @@ private final class CaptionExportSession: @unchecked Sendable {
     private func pumpVideo() {
         while !hasFailed, videoInput.isReadyForMoreMediaData {
             if isCancelled { return abort(with: CancellationError()) }
-            guard let sample = videoOutput.copyNextSampleBuffer() else {
-                if reader.status == .failed {
-                    return abort(with: ExportError.readerFailed(reader.error?.localizedDescription ?? "unknown"))
+            guard !placedFrames.isEmpty else {
+                if videoSourceDone {
+                    videoInput.markAsFinished()
+                    return inputFinished()
                 }
-                videoInput.markAsFinished()
-                return inputFinished()
+                do { try readVideoFrame() } catch { return abort(with: error) }
+                continue
             }
-            guard let source = CMSampleBufferGetImageBuffer(sample) else { continue }
-            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+            let (source, pts) = placedFrames.removeFirst()
 
             do {
                 let composed = try compose(source: source, at: pts.seconds)
@@ -528,11 +586,39 @@ private final class CaptionExportSession: @unchecked Sendable {
         }
     }
 
+    /// Reads one source frame and places it: at its own time, or — with an
+    /// edit — once the next frame says how long it shows, at every output
+    /// time it gets (none when it was cut).
+    private func readVideoFrame() throws {
+        guard let sample = read(videoOutput, since: \.videoReadSince) else {
+            if reader.status == .failed {
+                throw ExportError.readerFailed(reader.error?.localizedDescription ?? "unknown")
+            }
+            if let heldFrame { place(heldFrame, until: sourceVideoEnd) }
+            heldFrame = nil
+            videoSourceDone = true
+            return
+        }
+        guard let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
+        let start = CMSampleBufferGetPresentationTimeStamp(sample)
+        guard frameTiming != nil else {
+            placedFrames.append((buffer, start))
+            return
+        }
+        if let heldFrame { place(heldFrame, until: start) }
+        heldFrame = (buffer, start)
+    }
+
+    private func place(_ frame: (buffer: CVPixelBuffer, start: CMTime), until end: CMTime) {
+        guard let times = frameTiming?.outputTimes(start: frame.start, end: end) else { return }
+        placedFrames += times.map { (frame.buffer, $0) }
+    }
+
     private func pumpAudio() {
         guard let audioOutput, let audioInput else { return }
         while !hasFailed, audioInput.isReadyForMoreMediaData {
             if isCancelled { return abort(with: CancellationError()) }
-            guard let sample = audioOutput.copyNextSampleBuffer() else {
+            guard let sample = read(audioOutput, since: \.audioReadSince) else {
                 if let audioReader, audioReader.status == .failed {
                     return abort(with: ExportError.readerFailed(audioReader.error?.localizedDescription ?? "unknown"))
                 }
@@ -797,9 +883,70 @@ private final class CaptionExportSession: @unchecked Sendable {
 
     private func takeContinuation() -> CheckedContinuation<Void, Error>? {
         lock.lock()
-        defer { lock.unlock() }
         let continuation = finished
         finished = nil
+        let timer = watchdog
+        watchdog = nil
+        lock.unlock()
+        timer?.cancel()
         return continuation
+    }
+
+    // MARK: - Stall watch
+
+    /// `copyNextSampleBuffer`, with the time it was entered noted for the
+    /// watchdog.
+    private func read(
+        _ output: AVAssetReaderOutput,
+        since mark: ReferenceWritableKeyPath<CaptionExportSession, DispatchTime?>
+    ) -> CMSampleBuffer? {
+        lock.lock()
+        self[keyPath: mark] = .now()
+        lock.unlock()
+        let sample = output.copyNextSampleBuffer()
+        lock.lock()
+        self[keyPath: mark] = nil
+        lock.unlock()
+        return sample
+    }
+
+    private func startWatchdog() {
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "captionkit.export.watchdog"))
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in self?.checkForStall() }
+        lock.lock()
+        watchdog = timer
+        lock.unlock()
+        timer.resume()
+    }
+
+    /// A pump stuck inside a read past ``stallLimit`` ends the run — with
+    /// ``ReaderStall``, or with the error an abort that the stuck pump is
+    /// holding up already chose. The stuck reader is left alone (cancelling
+    /// a reader blocked in a read crashed inside AVFoundation), and the
+    /// writer is cancelled from the other pump's queue, after its pass.
+    private func checkForStall() {
+        let limit = UInt64(Self.stallLimit * 1_000_000_000)
+        lock.lock()
+        // Taken under the lock that `read` marks under: no mark is later.
+        let now = DispatchTime.now().uptimeNanoseconds
+        let stuck = { (since: DispatchTime?) in since.map { now - $0.uptimeNanoseconds > limit } ?? false }
+        let videoStuck = stuck(videoReadSince), audioStuck = stuck(audioReadSince)
+        guard finished != nil, videoStuck || audioStuck, let timer = watchdog else { return lock.unlock() }
+        watchdog = nil
+        if terminalError == nil { terminalError = ReaderStall() }
+        let error = terminalError ?? ReaderStall()
+        lock.unlock()
+        timer.cancel()
+
+        let teardown = { [self] in
+            writer.cancelWriting()
+            takeContinuation()?.resume(throwing: error)
+        }
+        switch (videoStuck, audioStuck) {
+        case (true, false): audioQueue.async(execute: teardown)
+        case (false, true): videoQueue.async(execute: teardown)
+        default: teardown()
+        }
     }
 }

@@ -37,19 +37,15 @@ private func bytes(of image: CGImage) -> [UInt8] {
         // Warm the caches first: a card's very first render takes its shadow
         // by a different route than every later one (an older quirk, kept —
         // changing it changes frames), so compare like with like.
-        // The caches are process-wide and other suites render in parallel, so
-        // one may evict this card's shadow between the two draws; a pass is
-        // the two draws agreeing on one attempt with the cache held still.
-        var agreed = false
         var lastWhole: CGImage?
-        for _ in 0..<3 where !agreed {
+        let agreed = try agreesOnSomeAttempt {
             _ = CaptionRenderer.renderOverlay(document: document, at: 0.9)
             let one = try #require(CaptionRenderer.renderOverlay(document: document, at: 0.9))
             let context = try #require(CaptionRenderer.makeBitmapContext(width: 360, height: 640))
             CaptionRenderer.draw(document: document, in: context, at: 0.9, layers: .captions)
             CaptionRenderer.draw(document: document, in: context, at: 0.9, layers: .titles)
-            agreed = bytes(of: try #require(context.makeImage())) == bytes(of: one)
             lastWhole = one
+            return bytes(of: try #require(context.makeImage())) == bytes(of: one)
         }
         #expect(agreed)
         let whole = try #require(lastWhole)

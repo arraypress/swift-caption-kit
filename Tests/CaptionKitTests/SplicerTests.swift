@@ -119,7 +119,7 @@ final class SplicerTests: XCTestCase {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
         for frame in 0..<frames {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
+            try await waitUntilReady(input, of: writer)
             var buffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, adaptor.pixelBufferPool!, &buffer)
             CVPixelBufferLockBaseAddress(buffer!, [])
