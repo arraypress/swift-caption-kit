@@ -70,6 +70,8 @@ public enum CaptionRenderer {
             drawCard(HookCard.card(for: hook), document: HookCard.document(for: hook, config: document.renderConfig),
                      in: context, at: time)
         }
+        // Stickers, placed by rule, on the footage's clock like the hook.
+        StickerRenderer.draw(document: document, in: context, at: time)
         drawProgressBar(document: document, in: context, at: time)
         // Border frame is the outermost layer — a clean edge around everything.
         if let border = document.videoBorder, border.width > 0 {
@@ -393,6 +395,8 @@ public enum CaptionRenderer {
     private static func overlayCacheSignature(document: CaptionDocument, at time: TimeInterval) -> Int? {
         // A progress bar advances every frame — every frame unique, don't cache.
         if document.progressBar != nil { return nil }
+        // Stickers may animate; drawn fresh every frame.
+        if document.placedStickers?.isEmpty == false { return nil }
 
         var hasher = Hasher()
         hasher.combine("overlay")
@@ -1870,6 +1874,14 @@ public enum CaptionRenderer {
         var blur: Double = 0
         /// Directional motion-smear trail offset in pixels (smear-in).
         var smearDX: Double = 0
+    }
+
+    /// A word entrance's curve at `progress`, for a sticker riding it
+    /// (``StickerRenderer``): the same motion a word makes, applied to a picture.
+    static func stickerEntrance(_ animation: WordAnimation, progress: Double, travel: Double)
+        -> (alpha: Double, scale: Double, dx: Double, dy: Double, rotation: Double) {
+        let effects = entranceEffects(animation, progress: progress, travel: travel)
+        return (effects.alpha, effects.scale * effects.scaleY, effects.dx, effects.dy, effects.rotation)
     }
 
     private static func entranceEffects(_ animation: WordAnimation, progress p: Double, travel: Double, intensity: Double = 1) -> EntranceEffects {
