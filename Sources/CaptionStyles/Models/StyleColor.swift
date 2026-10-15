@@ -1,6 +1,6 @@
 //
 //  StyleColor.swift
-//  CaptionKitLite
+//  CaptionStyles
 //
 //  Created by David Sherlock on 2026.
 //

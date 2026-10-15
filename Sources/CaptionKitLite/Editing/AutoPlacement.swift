@@ -6,6 +6,7 @@
 //
 
 @preconcurrency import AVFoundation
+import CaptionStyles
 import CoreGraphics
 import Foundation
 import Vision
@@ -33,7 +34,7 @@ public enum AutoPlacement {
         videoURL: URL,
         sampleCount: Int = 12,
         margin: CGFloat = 0.12
-    ) async throws -> NormalizedPoint? {
+    ) async throws -> CaptionStyles.NormalizedPoint? {
         let asset = AVURLAsset(url: videoURL)
         let duration = try await asset.load(.duration).seconds
         guard duration > 0 else { return nil }
@@ -65,7 +66,7 @@ public enum AutoPlacement {
         // Center the caption a margin below the chin, clamped to stay off
         // the very bottom (platform-UI territory).
         let y = min(0.82, max(0.5, chin + margin))
-        return NormalizedPoint(x: 0.5, y: y)
+        return CaptionStyles.NormalizedPoint(x: 0.5, y: y)
     }
 
     /// The median horizontal center of the face across sampled frames

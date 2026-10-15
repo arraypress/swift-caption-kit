@@ -9,6 +9,7 @@
 
 import Testing
 @testable import CaptionKitLite
+@testable import CaptionStyles
 
 @Suite("Model behavior extracted")
 struct ModelBehaviorTests {
@@ -20,6 +21,7 @@ struct ModelBehaviorTests {
         let alpha = StyleColorHex.components("00000080")
         #expect(alpha != nil && abs(alpha!.alpha - 128.0 / 255.0) < 0.001)
         #expect(StyleColorHex.components("nope") == nil)
+        #expect(StyleColorHex.components("12345") == nil)
         #expect(StyleColor(hex: "#FF0000") == StyleColor(red: 1, green: 0, blue: 0))
     }
 }

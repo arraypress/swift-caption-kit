@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import CaptionStyles
 import CoreGraphics
 import Foundation
 import Vision
@@ -19,13 +20,13 @@ public struct CropKeyframe: Codable, Equatable, Sendable {
 
     /// The crop center, `0…1` per axis, top-left semantics (same space as
     /// ``CaptionDocument/cropOffset``).
-    public var offset: NormalizedPoint
+    public var offset: CaptionStyles.NormalizedPoint
 
     /// Extra zoom at this moment (`1` = no zoom, `1.5` = punched in 50%) —
     /// lets a manual camera path punch in and pan, not just pan.
     public var scale: CGFloat
 
-    public init(time: TimeInterval, offset: NormalizedPoint, scale: CGFloat = 1) {
+    public init(time: TimeInterval, offset: CaptionStyles.NormalizedPoint, scale: CGFloat = 1) {
         self.time = time
         self.offset = offset
         self.scale = scale
@@ -35,14 +36,14 @@ public struct CropKeyframe: Codable, Equatable, Sendable {
 /// Interpolation over crop keyframes — linear, clamped at both ends.
 public enum CropTrack {
 
-    public static func offset(at time: TimeInterval, keyframes: [CropKeyframe]) -> NormalizedPoint? {
+    public static func offset(at time: TimeInterval, keyframes: [CropKeyframe]) -> CaptionStyles.NormalizedPoint? {
         guard let first = keyframes.first, let last = keyframes.last else { return nil }
         if time <= first.time { return first.offset }
         if time >= last.time { return last.offset }
         for (from, to) in zip(keyframes, keyframes.dropFirst()) where time < to.time {
             let span = max(0.0001, to.time - from.time)
             let progress = (time - from.time) / span
-            return NormalizedPoint(
+            return CaptionStyles.NormalizedPoint(
                 x: from.offset.x + (to.offset.x - from.offset.x) * progress,
                 y: from.offset.y + (to.offset.y - from.offset.y) * progress
             )
@@ -151,7 +152,7 @@ public enum FaceTrack {
             let window = samples[lower...upper]
             keyframes.append(CropKeyframe(
                 time: samples[index].time,
-                offset: NormalizedPoint(
+                offset: CaptionStyles.NormalizedPoint(
                     x: window.map(\.x).reduce(0, +) / CGFloat(window.count),
                     y: window.map(\.y).reduce(0, +) / CGFloat(window.count)
                 )
@@ -200,7 +201,7 @@ public enum FaceTrack {
             // Vision boxes are normalized, bottom-left origin → flip Y to top-left.
             samples.append(FaceRectKeyframe(
                 time: result.requestedTime.seconds,
-                center: NormalizedPoint(x: box.midX, y: 1 - box.midY),
+                center: CaptionStyles.NormalizedPoint(x: box.midX, y: 1 - box.midY),
                 width: Double(box.width),
                 height: Double(box.height)
             ))
@@ -216,7 +217,7 @@ public enum FaceTrack {
             let n = window.count
             smoothed.append(FaceRectKeyframe(
                 time: samples[index].time,
-                center: NormalizedPoint(
+                center: CaptionStyles.NormalizedPoint(
                     x: window.map(\.center.x).reduce(0, +) / CGFloat(n),
                     y: window.map(\.center.y).reduce(0, +) / CGFloat(n)
                 ),

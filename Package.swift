@@ -17,6 +17,12 @@ let package = Package(
             name: "CaptionKitLite",
             targets: ["CaptionKitLite"]
         ),
+        // The style model and the built-in presets (as JSON data) alone —
+        // what swift-caption-kit shares, so there is one copy of each.
+        .library(
+            name: "CaptionStyles",
+            targets: ["CaptionStyles"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/arraypress/swift-subtitle-kit.git", from: "0.1.0"),
@@ -24,18 +30,27 @@ let package = Package(
         // lines, no model weights, no dependencies of its own. Everything
         // else here is an Apple framework.
         .package(url: "https://github.com/arraypress/swift-depth-blur.git", from: "0.1.0"),
+        // Style slots, `--var` and catalogue checks, shared with imagine and song.
+        .package(url: "https://github.com/arraypress/swift-recipe-kit.git", from: "0.2.0"),
     ],
     targets: [
         .target(
+            name: "CaptionStyles",
+            dependencies: [
+                .product(name: "RecipeKit", package: "swift-recipe-kit"),
+            ]
+        ),
+        .target(
             name: "CaptionKitLite",
             dependencies: [
+                "CaptionStyles",
                 .product(name: "SubtitleKit", package: "swift-subtitle-kit"),
                 .product(name: "DepthBlur", package: "swift-depth-blur"),
             ]
         ),
         .testTarget(
             name: "CaptionKitLiteTests",
-            dependencies: ["CaptionKitLite"]
+            dependencies: ["CaptionKitLite", "CaptionStyles"]
         ),
     ]
 )

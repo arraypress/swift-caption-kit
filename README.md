@@ -8,8 +8,8 @@ runs in a unit test or a command-line tool.
 word-level transcript → CaptionDocument → rendered frame(s) → export
 ```
 
-One external dependency. Everything else is CoreGraphics, CoreImage, CoreText,
-Vision and AVFoundation.
+Three small arraypress packages (subtitle formats, depth blur, recipe rules);
+everything else is CoreGraphics, CoreImage, CoreText, Vision and AVFoundation.
 
 ## The parity rule
 
@@ -21,7 +21,7 @@ construction. **Never add a second rendering path.**
 
 ## What's in the box
 
-**Styling** — ~50 presets (`StylePresets.all`), heavy/hollow text, stroke
+**Styling** — 50 presets (`StylePresets`), heavy/hollow text, stroke
 layers, drop and hard shadows, glow, gradient fills, image fills, synthetic
 slant, scanlines, chromatic aberration, per-line / whole-block / per-word
 background pills, and block rotation.
@@ -33,6 +33,50 @@ highlight modes: `karaoke`, `activeWord`, `activeBox`, `activeUnderline`,
 
 **Custom styles** — `CaptionStyle` is `Codable`, so a style is a JSON file.
 Nothing extra to learn, and no format to invent.
+
+## The presets are data: `CaptionStyles`
+
+The style model (`CaptionStyle`, `WordStyle`, `StyleColor`, `GroupingRules`)
+and the 50 presets live in their own product, `CaptionStyles`, which
+`CaptionKitLite` re-exports. It is the one copy: the fuller
+`swift-caption-kit` depends on it rather than carrying its own (it used to
+carry a byte-identical 904-line `StylePresets.swift` and the four model files).
+
+The presets are a JSON catalogue compiled in as a Swift string — not a
+resource bundle, which breaks beside a Homebrew binary reached through a
+symlink. Each entry lists only what differs from `CaptionStyle()`, colours as
+`yellow`, `#00E676` or `black@0.4`, with `{slot}` markers where a knob goes:
+
+```json
+{
+  "name": "hormozi", "title": "Hormozi", "featured": true,
+  "slots": [{"name": "accent", "kind": "colors", "default": "#2ECC40,#FFDC00,#FF4136,#B10DC9"}],
+  "style": {"fontSize": 88, "fontWeight": "black", "highlightMode": "activeBox", "wordColorPalette": "{accent}", …}
+}
+```
+
+```swift
+import CaptionStyles
+
+let style = try StylePresets.style(named: "hormozi", vars: ["accent": "#00E676"])
+StylePresets.named("Clean Pop")?.name          // "clean-pop" — case and separators forgiven
+StylePresets.catalog.first?.styleSlots         // RecipeKit `StyleSlot`s, for `--var`
+try StyleJSON.style(from: ["fontSize": .number(90), "textColor": .string("pink")])  // a partial style, made whole
+```
+
+Names are kebab-case. Slots: `accent` (the spoken word, 23 presets), `color`
+(the text, 8), `from`/`to` (gradient stops, 6), `palette` (2), `tile` and
+`bubble` (1 each); 11 presets have none. A test parses the catalogue with
+RecipeKit's `StyleCatalogs` rules and requires no problems: kebab-case unique
+names, every key a `CaptionStyle` field (`StyleSchema`, read off the types, so a
+misspelt `"fontSzie"` is caught rather than ignored), every marker a slot and
+every slot used, every default a colour that reads, every preset a style that
+decodes.
+
+**Measured:** all 50 presets, decoded from the JSON, encode byte-identical to
+the Swift presets they replaced (every field, every Double), as do the
+featured flags, grouping hints and word looks; and `swift-caption-kit` renders
+200/200 frames identical to this engine across the 50 presets × 4 moments.
 
 **Grouping** — `CaptionGrouper` turns a word stream into readable cards by
 pause, line and character rules; `reflowLines` re-lays a card without touching
@@ -65,7 +109,7 @@ let cards = CaptionGrouper.group(words, rules: GroupingRules())
 
 var document = CaptionDocument(cards: cards)
 document.videoURL = videoURL          // required by the exporter
-document.style = StylePresets.all.first { $0.name == "Karaoke" }!.style
+document.style = try StylePresets.style(named: "karaoke")
 document.renderConfig = .reel
 
 // A single frame — cheap, for previewing a style.
@@ -143,7 +187,9 @@ they are implemented in this package.
 ## Requirements
 
 - macOS 26+ / iOS 26+, Swift 6.2
-- One dependency: [swift-depth-blur](https://github.com/arraypress/swift-depth-blur)
+- [swift-subtitle-kit](https://github.com/arraypress/swift-subtitle-kit),
+  [swift-depth-blur](https://github.com/arraypress/swift-depth-blur) and
+  [swift-recipe-kit](https://github.com/arraypress/swift-recipe-kit)
 
 Transcription is deliberately out of scope: bring word-level timings from
 whatever you like. `Word(text:start:end:)` is the entire contract.
