@@ -14,6 +14,7 @@
 import CoreGraphics
 import CoreText
 import Foundation
+import Legibility
 
 extension CaptionRenderer {
 

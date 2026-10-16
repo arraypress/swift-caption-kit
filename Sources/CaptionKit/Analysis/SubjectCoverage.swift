@@ -7,6 +7,7 @@
 
 import CoreGraphics
 import Foundation
+import Legibility
 
 /// How much of each caption word the speaker would hide if the captions went
 /// behind them — measured on the footage, not guessed — and which cards can
@@ -58,7 +59,8 @@ public enum SubjectCoverage {
             for frame in frames {
                 guard let rects = CaptionRenderer.wordRects(document: document, at: frame.time),
                       rects.cardID == card.id else { continue }
-                guard let mask = masker.mask(of: frame.image) else { continue }
+                let image = frame.image
+                guard let mask = await VisionQueue.run({ masker.mask(of: image) }) else { continue }
                 for (index, rect) in rects.rects where index < worst.count {
                     worst[index] = max(worst[index], SubjectMasker.coverage(of: rect, in: mask))
                 }

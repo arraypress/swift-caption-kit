@@ -9,7 +9,6 @@
 import CaptionStyles
 import CoreGraphics
 import Foundation
-import Vision
 
 /// Face-aware caption placement: samples frames across the video, detects
 /// faces on-device with Vision, and suggests a caption position just below
@@ -51,7 +50,7 @@ public enum AutoPlacement {
         var faceBottoms: [CGFloat] = []
         for await result in generator.images(for: times) {
             guard let frame = try? result.image else { continue }
-            if let face = largestFace(in: frame) {
+            if let face = largest(await FaceBoxes.find(in: frame)) {
                 // Vision rects are normalized with a bottom-left origin; our
                 // coordinates are top-left. The face box's bottom edge:
                 faceBottoms.append(1 - face.minY)
@@ -92,7 +91,7 @@ public enum AutoPlacement {
         var centers: [CGFloat] = []
         for await result in generator.images(for: times) {
             guard let frame = try? result.image else { continue }
-            if let face = largestFace(in: frame) {
+            if let face = largest(await FaceBoxes.find(in: frame)) {
                 centers.append(face.midX) // Vision x is already left-to-right
             }
         }
@@ -100,13 +99,9 @@ public enum AutoPlacement {
         return median(of: centers)
     }
 
-    private static func largestFace(in image: CGImage) -> CGRect? {
-        let request = VNDetectFaceRectanglesRequest()
-        let handler = VNImageRequestHandler(cgImage: image)
-        try? handler.perform([request])
-        return request.results?
-            .map(\.boundingBox)
-            .max { $0.width * $0.height < $1.width * $1.height }
+    /// The face with the largest area.
+    private static func largest(_ faces: [CGRect]) -> CGRect? {
+        faces.max { $0.width * $0.height < $1.width * $1.height }
     }
 
     private static func median(of values: [CGFloat]) -> CGFloat {

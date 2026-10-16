@@ -10,6 +10,7 @@
 
 import CoreGraphics
 import Foundation
+import Legibility
 import Testing
 @testable import CaptionKit
 

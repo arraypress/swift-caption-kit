@@ -13,6 +13,7 @@
 
 import CoreGraphics
 import Foundation
+import Legibility
 
 /// One sticker's measurements.
 public struct StickerReport: Codable, Equatable, Sendable {
@@ -71,8 +72,8 @@ public enum StickerCheck {
         for sticker in stickers {
             let samples = (0..<5).map { sticker.start + (sticker.end - sticker.start) * (Double($0) + 0.5) / 5 }
             // Heads, not just the brow-to-chin face box (``StickerPlacer/head(of:)``).
-            let faces = await CanvasFrames.frames(for: document, at: samples)
-                .flatMap { CanvasFrames.faces(in: $0.image) }.map(StickerPlacer.head(of:))
+            let frames = await CanvasFrames.frames(for: document, at: samples)
+            let faces = await CanvasFrames.faces(in: frames.map(\.image)).joined().map(StickerPlacer.head(of:))
             var captions: [CGRect] = []
             var time = sticker.start
             while time < sticker.end {
@@ -113,7 +114,7 @@ public enum StickerCheck {
         without.placedStickers = document.placedStickers?.filter { $0.id != sticker.id }
         guard let with = CaptionRenderer.renderOverlay(document: document, at: time, scale: checkScale),
               let bare = CaptionRenderer.renderOverlay(document: without, at: time, scale: checkScale),
-              let a = rgba(with), let b = rgba(bare) else { return 0 }
+              let a = Pixels.rgba(of: with), let b = Pixels.rgba(of: bare) else { return 0 }
         let width = with.width, height = with.height
         let box = CanvasFrames.pixels(sticker.rect, in: with).integral
             .intersection(CGRect(x: 0, y: 0, width: width, height: height))
@@ -130,20 +131,5 @@ public enum StickerCheck {
             }
         }
         return total > 0 ? Double(changed) / Double(total) : 0
-    }
-
-    /// `image`'s premultiplied RGBA bytes, row 0 the top.
-    static func rgba(_ image: CGImage) -> [UInt8]? {
-        let width = image.width, height = image.height
-        var data = [UInt8](repeating: 0, count: width * height * 4)
-        let drawn = data.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
-                                          bytesPerRow: width * 4,
-                                          space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return true
-        }
-        return drawn ? data : nil
     }
 }

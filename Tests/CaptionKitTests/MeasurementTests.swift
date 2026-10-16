@@ -13,6 +13,7 @@ import CoreGraphics
 import CoreImage
 import Foundation
 import ImageIO
+import Legibility
 import Testing
 @testable import CaptionKit
 
@@ -132,13 +133,13 @@ private func portrait() throws -> CGImage {
 
     @Test func whiteOnWhiteIsOneToOneAndAnOutlineLiftsIt() throws {
         let (bare, letters) = frame(text: 1, background: 1, outline: nil)
-        let flat = try #require(CaptionContrast.ratio(composite: bare, letters: letters, referenceScale: 1))
+        let flat = try #require(LetterRing.measure(composite: bare, letters: letters, referenceScale: 1))
         #expect(abs(flat.ratio - 1) < 0.01)
         let (outlined, _) = frame(text: 1, background: 1, outline: 0)
-        let ringed = try #require(CaptionContrast.ratio(composite: outlined, letters: letters, referenceScale: 1))
+        let ringed = try #require(LetterRing.measure(composite: outlined, letters: letters, referenceScale: 1))
         #expect(ringed.ratio > 20)
         let (dark, _) = frame(text: 1, background: 0, outline: nil)
-        #expect(try #require(CaptionContrast.ratio(composite: dark, letters: letters, referenceScale: 1)).ratio > 20)
+        #expect(try #require(LetterRing.measure(composite: dark, letters: letters, referenceScale: 1)).ratio > 20)
     }
 
     @Test func aLowQuartileUnderThreeIsLow() {
@@ -154,7 +155,7 @@ private func portrait() throws -> CGImage {
         let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1)).cropped(to: CGRect(x: 0, y: 0, width: 100, height: 100))
         let scrim = CaptionContrast.scrimOverlay(color: .black, opacity: 0.85, lower: true)
         let out = CIContext().createCGImage(GradientOverlayFilter(scrim).apply(white), from: white.extent)!
-        let rows = CaptionContrast.luminances(of: out)
+        let rows = Pixels.luminances(of: out)
         // Top-left-first rows: the bottom row (lower captions) is darkest.
         #expect(rows[95 * 100 + 50] < 0.3 && rows[5 * 100 + 50] > 0.8)
     }
@@ -189,23 +190,23 @@ private func portrait() throws -> CGImage {
         #expect(subject > 0.9)
     }
 
-    @Test func aFaceCoverTakesTheDetailOutOfTheFace() throws {
+    @Test func aFaceCoverTakesTheDetailOutOfTheFace() async throws {
         let picture = try portrait()
         let width = 360, height = 640
         var document = CaptionDocument(renderConfig: RenderConfig(width: width, height: height))
         let before = try #require(FootageStage.compose(picture, document: document, at: 0, width: width, height: height))
-        let face = try #require(CanvasFrames.faces(in: CIContext().createCGImage(CIImage(cgImage: picture),
-                                                                                 from: CGRect(x: 0, y: 0, width: picture.width, height: picture.height))!).first)
+        let drawn = CIContext().createCGImage(CIImage(cgImage: picture), from: CGRect(x: 0, y: 0, width: picture.width, height: picture.height))!
+        let face = try #require(await CanvasFrames.faces(in: [drawn])[0].first)
         document.faceCensor = FaceCensor(mode: .blur, keyframes: [
             FaceRectKeyframe(time: 0, center: NormalizedPoint(x: face.midX, y: face.midY), width: face.width, height: face.height),
         ])
         let after = try #require(FootageStage.compose(picture, document: document, at: 0, width: width, height: height))
-        let box = try #require(CanvasFrames.faces(in: before).first)
+        let box = try #require(await CanvasFrames.faces(in: [before])[0].first)
         let mask = FootageCheck.mask(of: CanvasFrames.pixels(box, in: before), width: width, height: height)
         let ratio = try #require(FootageCheck.Detail.ratio(FootageCheck.Detail.laplacian(of: after),
                                                            FootageCheck.Detail.laplacian(of: before), where: mask))
         #expect(ratio < 0.5)
-        #expect(CanvasFrames.faces(in: after).isEmpty)
+        #expect(await CanvasFrames.faces(in: [after])[0].isEmpty)
     }
 }
 

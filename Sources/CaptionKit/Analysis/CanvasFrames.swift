@@ -8,7 +8,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
-import Vision
+import Legibility
 
 /// Footage frames as the export frames them — aspect-filled onto the canvas
 /// with the document's crop — at a reduced size, for measuring what is
@@ -71,14 +71,13 @@ public enum CanvasFrames {
         return context.makeImage()
     }
 
-    /// Every face Vision finds in `image`, normalized `0…1` with a
-    /// **top-left** origin.
-    public static func faces(in image: CGImage) -> [CGRect] {
-        let request = VNDetectFaceRectanglesRequest()
-        try? VNImageRequestHandler(cgImage: image).perform([request])
-        return (request.results ?? []).map { face in
-            let box = face.boundingBox
-            return CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
+    /// Every face Vision finds in each of `images`, normalized `0…1` with a
+    /// **top-left** origin — found on a dispatch queue, not the cooperative
+    /// pool: Vision blocks while it works, and blocked pool threads starve
+    /// every other task.
+    public static func faces(in images: [CGImage]) async -> [[CGRect]] {
+        await FaceBoxes.find(in: images).map { faces in
+            faces.map { CGRect(x: $0.minX, y: 1 - $0.maxY, width: $0.width, height: $0.height) }
         }
     }
 

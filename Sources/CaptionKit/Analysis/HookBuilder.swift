@@ -7,6 +7,7 @@
 
 import CoreGraphics
 import Foundation
+import Legibility
 
 /// Builds a hook title that needs no one to look at it: placed by rule and
 /// measured.
@@ -72,7 +73,7 @@ public enum HookBuilder {
         // What is on screen with it.
         let samples = (0..<5).map { start + (end - start) * (Double($0) + 0.5) / 5 }
         let frames = await CanvasFrames.frames(for: document, at: samples)
-        let faces = frames.flatMap { CanvasFrames.faces(in: $0.image) }.map { HookPlacement.padded($0, by: facePadding) }
+        let faces = await CanvasFrames.faces(in: frames.map(\.image)).joined().map { HookPlacement.padded($0, by: facePadding) }
         var captions: [CGRect] = []
         var time = start
         while time < end {
@@ -114,7 +115,9 @@ public enum HookBuilder {
     /// The share (`0…1`) of `hook`'s words that on-device text recognition
     /// reads back off the finished frame — footage, captions and title
     /// together, as the export draws them — once the title has settled.
-    /// `nil` when the frame cannot be drawn.
+    /// `nil` when it was not measured: the frame cannot be drawn, or text
+    /// recognition could not run (a busy Neural Engine is retried, then
+    /// read on the CPU) — never reported as unreadable.
     public static func readBack(_ hook: HookTitle, document: CaptionDocument) async -> Double? {
         let time = hook.start + (hook.end - hook.start) * 0.6
         var document = document
@@ -123,7 +126,8 @@ public enum HookBuilder {
               let frame = await CanvasFrames.frames(for: document, at: [time], width: document.renderConfig.width).first,
               let overlay = CaptionRenderer.renderOverlay(document: document, at: time),
               let composed = composite(frame.image, overlay) else { return nil }
-        return TextLegibility.readFraction(of: hook.text, in: composed, rect: HookPlacement.padded(rect, by: 0.01))
+        let words = hook.text, region = HookPlacement.padded(rect, by: 0.01)
+        return await VisionQueue.run { ReadBack.measure(words, in: composed, rect: region) }
     }
 
     /// `overlay` drawn over `footage`, both at `footage`'s size.

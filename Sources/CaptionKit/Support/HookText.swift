@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import Legibility
 
 public enum HookText {
 
@@ -43,8 +44,8 @@ public enum HookText {
     /// does not repeat it.
     public static func repeatsCaption(_ text: String, firstCard: CaptionCard?) -> Bool {
         guard let card = firstCard else { return false }
-        let hook = TextLegibility.words(in: text)
-        let caption = TextLegibility.words(in: card.text)
+        let hook = ReadBack.words(in: text)
+        let caption = ReadBack.words(in: card.text)
         return !hook.isEmpty && hook.count <= caption.count && Array(caption.prefix(hook.count)) == hook
     }
 

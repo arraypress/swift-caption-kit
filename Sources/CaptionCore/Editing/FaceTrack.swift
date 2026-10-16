@@ -9,7 +9,6 @@ import AVFoundation
 import CaptionStyles
 import CoreGraphics
 import Foundation
-import Vision
 
 /// A moment on the source timeline where the aspect-fill crop should be
 /// centered — the building block of face-tracked reframing.
@@ -95,13 +94,10 @@ public enum FaceTrack {
         var rights: [CGFloat] = []
         for await result in generator.images(for: times) {
             guard let frame = try? result.image else { continue }
-            let request = VNDetectFaceRectanglesRequest()
-            let handler = VNImageRequestHandler(cgImage: frame)
-            try? handler.perform([request])
-            let faces = (request.results ?? [])
-                .sorted { $0.boundingBox.width > $1.boundingBox.width }
+            let faces = await FaceBoxes.find(in: frame)
+                .sorted { $0.width > $1.width }
                 .prefix(2)
-                .map { $0.boundingBox.midX }
+                .map(\.midX)
             guard faces.count == 2 else { continue }
             lefts.append(min(faces[0], faces[1]))
             rights.append(max(faces[0], faces[1]))
@@ -151,15 +147,12 @@ public enum FaceTrack {
         for await result in generator.images(for: times) {
             guard let frame = try? result.image else { continue }
             source = CGSize(width: frame.width, height: frame.height)
-            let request = VNDetectFaceRectanglesRequest()
-            let handler = VNImageRequestHandler(cgImage: frame)
-            try? handler.perform([request])
-            guard let face = request.results?.max(by: { $0.boundingBox.width < $1.boundingBox.width }) else { continue }
+            guard let face = await FaceBoxes.find(in: frame).max(by: { $0.width < $1.width }) else { continue }
             // Vision boxes are normalized with a bottom-left origin.
             samples.append((
                 result.requestedTime.seconds,
-                face.boundingBox.midX,
-                1 - face.boundingBox.midY
+                face.midX,
+                1 - face.midY
             ))
         }
         guard samples.count >= 2 else { return [] }
@@ -213,11 +206,7 @@ public enum FaceTrack {
         var samples: [FaceRectKeyframe] = []
         for await result in generator.images(for: times) {
             guard let frame = try? result.image else { continue }
-            let request = VNDetectFaceRectanglesRequest()
-            let handler = VNImageRequestHandler(cgImage: frame)
-            try? handler.perform([request])
-            guard let face = request.results?.max(by: { $0.boundingBox.width < $1.boundingBox.width }) else { continue }
-            let box = face.boundingBox
+            guard let box = await FaceBoxes.find(in: frame).max(by: { $0.width < $1.width }) else { continue }
             // Vision boxes are normalized, bottom-left origin → flip Y to top-left.
             samples.append(FaceRectKeyframe(
                 time: result.requestedTime.seconds,

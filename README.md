@@ -9,9 +9,11 @@ is checked by a measurement rather than by somebody looking.
 word-level transcript → CaptionDocument → rendered frame(s) → export
 ```
 
-Three small arraypress packages (subtitle formats, depth blur, recipe rules);
-everything else is CoreGraphics, CoreImage, CoreText, NaturalLanguage, Vision
-and AVFoundation.
+Four small arraypress packages (subtitle formats, depth blur, recipe rules,
+and [swift-legibility](https://github.com/arraypress/swift-legibility) for the
+ink box, letter-ring contrast and OCR read-back the checks measure with — the
+same measurements `design` uses); everything else is CoreGraphics, CoreImage,
+CoreText, NaturalLanguage, Vision and AVFoundation.
 
 **One library, captions only.** This is the merge of the open
 `swift-caption-kit-lite` and the private editor engine behind the Caption
@@ -378,6 +380,12 @@ cards across all 61 styles and three platforms still reaches past: one
   face cover (and whether Vision still finds a face), a mirror against the
   flipped frame, a border's and a letterbox's solid share, when the first
   caption appears under a timing offset, how many words a zoom punch lands on.
+- Vision runs on a dispatch queue (`FaceBoxes`, Legibility's `VisionQueue`),
+  never on a Swift concurrency thread: Vision blocks while it works, and
+  several requests blocking the cooperative pool at once starved it. A hook
+  title's read-back that cannot run (another process holding the Neural
+  Engine; it is retried, then read on the CPU) is "not measured", never
+  "unreadable".
 - `SettledMoment` — the first moment a card has finished arriving (every
   entrance, letter cascade and draw-on done, before any exit): the frame a
   sample should show.

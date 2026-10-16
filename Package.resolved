@@ -1,5 +1,5 @@
 {
-  "originHash" : "affb365895e76e06d9473db7b5a0cf2421704c40370af869b5b7ef3e6156a926",
+  "originHash" : "f25525bcd95b2d6431a71c8d11454a840c75c7cb719ef33d92232f05a1852d15",
   "pins" : [
     {
       "identity" : "swift-depth-blur",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "8e918dc669e87c73a196518c24408d0f2601b62c",
         "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "swift-legibility",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arraypress/swift-legibility.git",
+      "state" : {
+        "revision" : "107864d20e2525a8729d32f26d72065fd99c9385",
+        "version" : "0.3.1"
       }
     },
     {

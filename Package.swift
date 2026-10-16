@@ -34,6 +34,8 @@ let package = Package(
         .package(url: "https://github.com/arraypress/swift-depth-blur.git", from: "0.1.0"),
         // Style slots, `--var` and catalogue checks, shared with imagine and song.
         .package(url: "https://github.com/arraypress/swift-recipe-kit.git", from: "0.2.0"),
+        // Ink box, letter-ring contrast and OCR read-back, shared with design.
+        .package(url: "https://github.com/arraypress/swift-legibility.git", from: "0.3.1"),
     ],
     targets: [
         .target(
@@ -47,6 +49,7 @@ let package = Package(
             dependencies: [
                 "CaptionStyles",
                 .product(name: "SubtitleKit", package: "swift-subtitle-kit"),
+                .product(name: "Legibility", package: "swift-legibility"),
             ]
         ),
         .target(
@@ -55,11 +58,12 @@ let package = Package(
                 "CaptionCore",
                 "CaptionStyles",
                 .product(name: "DepthBlur", package: "swift-depth-blur"),
+                .product(name: "Legibility", package: "swift-legibility"),
             ]
         ),
         .testTarget(
             name: "CaptionKitTests",
-            dependencies: ["CaptionKit", "CaptionCore", "CaptionStyles"],
+            dependencies: ["CaptionKit", "CaptionCore", "CaptionStyles", .product(name: "Legibility", package: "swift-legibility")],
             // One generated portrait (FLUX.2 Klein, no real person), for the
             // sticker placement tests to find a face in.
             resources: [.copy("Resources")]

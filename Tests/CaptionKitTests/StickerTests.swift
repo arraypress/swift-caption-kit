@@ -12,6 +12,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
+import Legibility
 import ImageIO
 import Testing
 import UniformTypeIdentifiers
@@ -62,7 +63,7 @@ private func solid(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> CGImage
 
 /// The RGBA at normalized top-left point `point` of `image`.
 private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
-    let bytes = StickerCheck.rgba(image)!
+    let bytes = Pixels.rgba(of: image)!
     let x = min(image.width - 1, Int(point.x * CGFloat(image.width)))
     let y = min(image.height - 1, Int(point.y * CGFloat(image.height)))
     let offset = (y * image.width + x) * 4
@@ -177,7 +178,7 @@ private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
         var base = CaptionDocument(videoURL: video, cards: [], renderConfig: canvas)
         base.cards = CaptionGrouper.group(words(["look", "at", "this"]))
         let frames = await CanvasFrames.frames(for: base, at: [0.5])
-        let faces = frames.flatMap { CanvasFrames.faces(in: $0.image) }
+        let faces = await CanvasFrames.faces(in: frames.map(\.image)).joined()
         #expect(!faces.isEmpty, "the generated portrait has a face Vision finds")
         // Anchored on the centre, where the face is: the rules move it off.
         let placed = try await StickerPlacer.place(
@@ -278,7 +279,7 @@ private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
             let before = try #require(CaptionRenderer.renderOverlay(document: document, at: 0.7))
             document.placedStickers = []
             let after = try #require(CaptionRenderer.renderOverlay(document: document, at: 0.7))
-            return StickerCheck.rgba(before) == StickerCheck.rgba(after)
+            return Pixels.rgba(of: before) == Pixels.rgba(of: after)
         }
         #expect(agreed)
     }

@@ -15,6 +15,7 @@
 
 import CoreGraphics
 import Foundation
+import Legibility
 
 public enum StickerPlacer {
 
@@ -81,9 +82,10 @@ public enum StickerPlacer {
             var obstacles: [(rect: CGRect, what: String)] = []
             let samples = (0..<5).map { item.start + (item.end - item.start) * (Double($0) + 0.5) / 5 }
             let frames = await CanvasFrames.frames(for: document, at: samples)
-            let person = PersonGrid(masks: frames.compactMap { masker.mask(of: $0.image) })
-            for frame in frames {
-                obstacles += CanvasFrames.faces(in: frame.image).map { (HookPlacement.padded(head(of: $0), by: facePadding), "a face") }
+            let images = frames.map(\.image)
+            let person = PersonGrid(masks: await VisionQueue.run { images.compactMap { masker.mask(of: $0) } })
+            for faces in await CanvasFrames.faces(in: images) {
+                obstacles += faces.map { (HookPlacement.padded(head(of: $0), by: facePadding), "a face") }
             }
             var time = item.start
             while time < item.end {

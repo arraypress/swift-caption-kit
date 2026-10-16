@@ -13,12 +13,9 @@
 
 import CoreGraphics
 import Foundation
+import Legibility
 
 public enum InkFit {
-
-    /// Alpha above which a pixel counts as drawn (about 8%: a soft shadow's
-    /// faint tail does not count, its body does).
-    static let alphaFloor: UInt8 = 20
 
     /// The bounds of what `card` draws at its settled moment, normalized
     /// `0…1` top-left; `nil` when it draws nothing.
@@ -36,19 +33,8 @@ public enum InkFit {
         // first time a card's shape is seen and baked (blurred once, cached)
         // from then on — what nearly every exported frame shows.
         _ = CaptionRenderer.renderOverlay(document: alone, at: time, scale: scale, layers: .captions)
-        guard let overlay = CaptionRenderer.renderOverlay(document: alone, at: time, scale: scale, layers: .captions),
-              let pixels = CaptionContrast.rgba(of: overlay) else { return nil }
-        let width = overlay.width, height = overlay.height
-        var minX = width, minY = height, maxX = -1, maxY = -1
-        for y in 0..<height {
-            for x in 0..<width where pixels[(y * width + x) * 4 + 3] > alphaFloor {
-                minX = min(minX, x); maxX = max(maxX, x)
-                minY = min(minY, y); maxY = max(maxY, y)
-            }
-        }
-        guard maxX >= minX, maxY >= minY else { return nil }
-        return CGRect(x: Double(minX) / Double(width), y: Double(minY) / Double(height),
-                      width: Double(maxX - minX + 1) / Double(width), height: Double(maxY - minY + 1) / Double(height))
+        guard let overlay = CaptionRenderer.renderOverlay(document: alone, at: time, scale: scale, layers: .captions) else { return nil }
+        return InkBox.normalizedBounds(of: overlay)
     }
 
     /// How far the cards' ink reaches past `safe` on each side (normalized),

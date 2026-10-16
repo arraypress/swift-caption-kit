@@ -939,7 +939,7 @@ private final class CaptionExportSession: @unchecked Sendable {
         lock.unlock()
         timer.cancel()
 
-        let teardown = { [self] in
+        let teardown: @Sendable () -> Void = { [self] in
             writer.cancelWriting()
             takeContinuation()?.resume(throwing: error)
         }

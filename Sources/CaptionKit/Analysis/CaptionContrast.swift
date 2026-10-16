@@ -7,8 +7,9 @@
 //  How well the captions stand out from what is around them, measured on
 //  the footage rather than judged: in sampled frames, the WCAG contrast
 //  ratio between the caption's letters and a thin ring of pixels just
-//  outside them. A stroke, a box or a shadow is in that ring and counts; so
-//  is bright footage pressing against thin white letters. And when the
+//  outside them (Legibility's `LetterRing`). A stroke, a box or a shadow is
+//  in that ring and counts; so is bright footage pressing against thin white
+//  letters. And when the
 //  measured contrast is low, the scrim that lifts it — a soft gradient over
 //  the footage behind the captions — chosen by measuring again.
 //
@@ -16,6 +17,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
+import Legibility
 
 public enum CaptionContrast {
 
@@ -175,10 +177,10 @@ public enum CaptionContrast {
             else { continue }
             let block = CaptionRenderer.captionBlockRect(document: captionsOnly, at: time)
             // Hollow letters have no fill: their outline is the ink.
-            var ink = mask(of: letters)
-            if !ink.contains(true) { ink = mask(of: overlay) }
-            guard let parts = regions(letters: ink, width: overlay.width, height: overlay.height,
-                                      referenceScale: Double(overlay.height) / 1920) else { continue }
+            var ink = Pixels.mask(of: letters)
+            if !ink.contains(true) { ink = Pixels.mask(of: overlay) }
+            guard let parts = LetterRing.regions(letters: ink, width: overlay.width, height: overlay.height,
+                                                 referenceScale: Double(overlay.height) / 1920) else { continue }
             samples.append(Sample(time: time, text: card.text, footage: footage, overlay: overlay,
                                   interior: parts.interior, ring: parts.ring, blockCentreY: block.map { Double($0.midY) }))
         }
@@ -194,7 +196,8 @@ public enum CaptionContrast {
     static func report(_ samples: [Sample], document: CaptionDocument) -> Report {
         Report(cards: samples.compactMap { sample in
             guard let composite = composite(sample, document: document),
-                  let measured = ratio(composite: composite, interior: sample.interior, ring: sample.ring) else { return nil }
+                  let measured = LetterRing.measure(composite: composite, interior: sample.interior, ring: sample.ring)
+            else { return nil }
             return Card(time: sample.time, text: sample.text, ratio: measured.ratio,
                         textLuminance: measured.text, surroundLuminance: measured.surround)
         })
@@ -214,110 +217,7 @@ public enum CaptionContrast {
         return context.makeImage()
     }
 
-    // MARK: Pure measurement
-
-    /// The contrast between the letters and the ring around them in
-    /// `composite`: the median luminance of the letters' interior (one pixel
-    /// in from the edge, where there is one) against the median of the ring
-    /// of pixels touching them, out to 3 reference points (at a 1920-tall
-    /// frame; at least 2 pixels) — the visible half of a typical 6–9 point
-    /// outline, so an outline counts and footage beyond it does not.
-    /// `nil` when there are no letters.
-    public static func ratio(composite: CGImage, letters: [Bool], referenceScale: Double)
-        -> (ratio: Double, text: Double, surround: Double)? {
-        guard let parts = regions(letters: letters, width: composite.width, height: composite.height,
-                                  referenceScale: referenceScale) else { return nil }
-        return ratio(composite: composite, interior: parts.interior, ring: parts.ring)
-    }
-
-    /// The letters' interior and the ring touching them (see
-    /// ``ratio(composite:letters:referenceScale:)``), as pixel indexes;
-    /// `nil` when there are no letters.
-    static func regions(letters: [Bool], width: Int, height: Int, referenceScale: Double) -> (interior: [Int], ring: [Int])? {
-        guard letters.count == width * height, letters.contains(true) else { return nil }
-        let outer = max(2, Int((3 * referenceScale).rounded()))
-        let core = eroded(letters, width: width, height: height, by: 1)
-        let interior = core.contains(true) ? core : letters
-        let far = dilated(letters, width: width, height: height, by: outer)
-        return (interior.indices.filter { interior[$0] }, far.indices.filter { far[$0] && !letters[$0] })
-    }
-
-    /// The contrast between the median luminance at `interior` and at `ring`.
-    static func ratio(composite: CGImage, interior: [Int], ring: [Int]) -> (ratio: Double, text: Double, surround: Double)? {
-        let luminance = luminances(of: composite)
-        guard !interior.isEmpty, !ring.isEmpty, luminance.count == composite.width * composite.height,
-              let text = Contrast.percentile(interior.map { luminance[$0] }, 0.5),
-              let surround = Contrast.percentile(ring.map { luminance[$0] }, 0.5) else { return nil }
-        return (Contrast.ratio(text, surround), text, surround)
-    }
-
-    /// Pixels whose alpha is at least half.
-    static func mask(of image: CGImage) -> [Bool] {
-        rgba(of: image).map { pixels in stride(from: 3, to: pixels.count, by: 4).map { pixels[$0] >= 128 } } ?? []
-    }
-
-    /// Every pixel's relative luminance.
-    static func luminances(of image: CGImage) -> [Double] {
-        guard let pixels = rgba(of: image) else { return [] }
-        return stride(from: 0, to: pixels.count, by: 4).map { offset in
-            Contrast.luminance(red: Double(pixels[offset]) / 255, green: Double(pixels[offset + 1]) / 255,
-                               blue: Double(pixels[offset + 2]) / 255)
-        }
-    }
-
-    /// Premultiplied sRGB RGBA bytes, top row first.
-    static func rgba(of image: CGImage) -> [UInt8]? {
-        let width = image.width, height = image.height
-        var bytes = [UInt8](repeating: 0, count: width * height * 4)
-        let drawn = bytes.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
-                                          bytesPerRow: width * 4,
-                                          space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return true
-        }
-        return drawn ? bytes : nil
-    }
-
-    /// `mask` grown by `radius` pixels (a square neighbourhood).
-    static func dilated(_ mask: [Bool], width: Int, height: Int, by radius: Int) -> [Bool] {
-        morph(mask, width: width, height: height, radius: radius, grow: true)
-    }
-
-    /// `mask` shrunk by `radius` pixels.
-    static func eroded(_ mask: [Bool], width: Int, height: Int, by radius: Int) -> [Bool] {
-        morph(mask, width: width, height: height, radius: radius, grow: false)
-    }
-
-    /// Separable square max (grow) or min (shrink) filter.
-    private static func morph(_ mask: [Bool], width: Int, height: Int, radius: Int, grow: Bool) -> [Bool] {
-        guard radius > 0 else { return mask }
-        var rows = mask
-        for y in 0..<height {
-            let base = y * width
-            for x in 0..<width {
-                var hit = !grow
-                for dx in max(0, x - radius)...min(width - 1, x + radius) where mask[base + dx] == grow {
-                    hit = grow
-                    break
-                }
-                rows[base + x] = hit
-            }
-        }
-        var result = rows
-        for x in 0..<width {
-            for y in 0..<height {
-                var hit = !grow
-                for dy in max(0, y - radius)...min(height - 1, y + radius) where rows[dy * width + x] == grow {
-                    hit = grow
-                    break
-                }
-                result[y * width + x] = hit
-            }
-        }
-        return result
-    }
+    // MARK: Bare letters
 
     /// `document` drawn as bare letters: no stroke, shadow, glow, box,
     /// highlight bar or 3-D depth, so the overlay's opaque pixels are the

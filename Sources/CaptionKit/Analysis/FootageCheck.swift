@@ -15,7 +15,7 @@
 @preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
-import Vision
+import Legibility
 
 public enum FootageCheck {
 
@@ -73,7 +73,8 @@ public enum FootageCheck {
             for (time, frame) in frames {
                 guard let before = FootageStage.compose(frame, document: plain, at: time, width: width, height: height),
                       let after = FootageStage.compose(frame, document: only, at: time, width: width, height: height),
-                      let mask = SubjectMasker().mask(of: before).flatMap({ personMask($0, width: width, height: height) })
+                      let person = await VisionQueue.run({ SubjectMasker().mask(of: before) }),
+                      let mask = personMask(person, width: width, height: height)
                 else { continue }
                 let b = Detail.laplacian(of: before), a = Detail.laplacian(of: after)
                 if let o = Detail.ratio(a, b, where: mask.map { !$0 }) { outside.append(o) }
@@ -92,8 +93,9 @@ public enum FootageCheck {
                 guard let before = FootageStage.compose(frame, document: plain, at: time, width: width, height: height),
                       let after = FootageStage.compose(frame, document: only, at: time, width: width, height: height)
                 else { continue }
-                let faces = CanvasFrames.faces(in: before)
-                found.append(CanvasFrames.faces(in: after).count)
+                let looked = await CanvasFrames.faces(in: [before, after])
+                let faces = looked[0]
+                found.append(looked[1].count)
                 guard let face = faces.max(by: { $0.width < $1.width }) else { continue }
                 let box = mask(of: CanvasFrames.pixels(face, in: before), width: width, height: height)
                 if let r = Detail.ratio(Detail.laplacian(of: after), Detail.laplacian(of: before), where: box) { ratios.append(r) }
@@ -114,7 +116,7 @@ public enum FootageCheck {
 
         if let border = document.videoBorder, border.width > 0, let (time, _) = frames.first,
            let overlay = CaptionRenderer.renderOverlay(document: document, at: time, layers: .titles),
-           let pixels = CaptionContrast.rgba(of: overlay) {
+           let pixels = Pixels.rgba(of: overlay) {
             let band = max(1, Int((border.width * CGFloat(overlay.height) / 1920).rounded(.down)))
             let target = [border.color.red, border.color.green, border.color.blue].map { UInt8(max(0, min(255, ($0 * 255).rounded()))) }
             var solid = 0, total = 0
@@ -130,7 +132,7 @@ public enum FootageCheck {
 
         if let ratio = document.letterbox, ratio > 0,
            let overlay = CaptionRenderer.renderOverlay(document: plainCaptions(document), at: 0, layers: .captions),
-           let pixels = CaptionContrast.rgba(of: overlay) {
+           let pixels = Pixels.rgba(of: overlay) {
             let size = CGSize(width: overlay.width, height: overlay.height)
             let canvasAspect = size.width / size.height
             var solid = 0, total = 0
@@ -238,7 +240,7 @@ public enum FootageCheck {
         /// The absolute 4-neighbour Laplacian of each pixel's luma (0…255
         /// scale; edge pixels 0) — high where the picture has fine detail.
         public static func laplacian(of image: CGImage) -> [Double] {
-            guard let pixels = CaptionContrast.rgba(of: image) else { return [] }
+            guard let pixels = Pixels.rgba(of: image) else { return [] }
             let width = image.width, height = image.height
             let luma = stride(from: 0, to: pixels.count, by: 4).map {
                 0.299 * Double(pixels[$0]) + 0.587 * Double(pixels[$0 + 1]) + 0.114 * Double(pixels[$0 + 2])
@@ -270,8 +272,8 @@ public enum FootageCheck {
 
         /// Mean absolute RGB difference, 0…1.
         public static func meanDifference(_ a: CGImage, _ b: CGImage) -> Double? {
-            guard a.width == b.width, a.height == b.height, let pa = CaptionContrast.rgba(of: a),
-                  let pb = CaptionContrast.rgba(of: b) else { return nil }
+            guard a.width == b.width, a.height == b.height, let pa = Pixels.rgba(of: a),
+                  let pb = Pixels.rgba(of: b) else { return nil }
             var total = 0.0, count = 0
             for i in stride(from: 0, to: pa.count, by: 4) {
                 for c in 0..<3 { total += abs(Double(pa[i + c]) - Double(pb[i + c])) }
