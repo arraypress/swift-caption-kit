@@ -64,6 +64,29 @@ public final class SubjectMasker: @unchecked Sendable {
         return Double(total) / Double((x1 - x0) * (y1 - y0) * 255)
     }
 
+    /// The highest row (normalized, top-left) where `mask` marks at least
+    /// half of the columns between `left` and `right` as person, searching
+    /// down from the top to `limit` — the top of a head above its face box.
+    /// `nil` when no row above `limit` is.
+    public static func topEdge(in mask: CGImage, left: CGFloat, right: CGFloat, limit: CGFloat) -> CGFloat? {
+        let width = mask.width, height = mask.height
+        var pixels = [UInt8](repeating: 0, count: width * height)
+        guard let context = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+        else { return nil }
+        context.draw(mask, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let x0 = max(0, Int((left * CGFloat(width)).rounded(.down)))
+        let x1 = min(width, Int((right * CGFloat(width)).rounded(.up)))
+        let last = min(height, Int((limit * CGFloat(height)).rounded(.up)))
+        guard x1 > x0, last > 0 else { return nil }
+        for y in 0..<last {   // row 0 of the bitmap is the top of the image
+            var total = 0
+            for x in x0..<x1 { total += Int(pixels[y * width + x]) }
+            if total * 2 >= (x1 - x0) * 255 { return CGFloat(y) / CGFloat(height) }
+        }
+        return nil
+    }
+
     /// `clean` drawn over `context` through `mask` — the person laid back
     /// over whatever was drawn since `clean` was taken.
     public static func layPerson(from clean: CGImage, mask: CGImage, in context: CGContext, size: CGSize) {

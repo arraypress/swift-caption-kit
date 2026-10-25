@@ -353,57 +353,12 @@ private func pixel(_ image: CGImage, at point: CGPoint) -> [UInt8] {
 
     // MARK: Fixtures
 
-    /// 1.5 s of the generated portrait (no real person) filling a 360×640 frame.
-    private func portraitVideo() async throws -> URL {
-        let resource = try #require(Bundle.module.url(forResource: "portrait", withExtension: "jpg", subdirectory: "Resources"))
-        let source = try #require(CGImageSourceCreateWithURL(resource as CFURL, nil))
-        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
-        return try await video(width: 360, height: 640, frames: 45, alpha: false) { context, _ in
-            context.draw(image, in: CGRect(x: 0, y: 0, width: 360, height: 640))
-        }
-    }
-
     /// 0.5 s of ProRes 4444: a clear frame with an opaque square that moves.
     private func alphaVideo() async throws -> URL {
-        try await video(width: 128, height: 128, frames: 15, alpha: true) { context, index in
+        try await writeVideo(width: 128, height: 128, frames: 15, alpha: true) { context, index in
             context.clear(CGRect(x: 0, y: 0, width: 128, height: 128))
             context.setFillColor(CGColor(srgbRed: 1, green: 0.5, blue: 0, alpha: 1))
             context.fill(CGRect(x: 34 + index % 3, y: 34, width: 60, height: 60))
         }
-    }
-
-    private func video(width: Int, height: Int, frames: Int, alpha: Bool,
-                       paint: (CGContext, Int) -> Void) async throws -> URL {
-        let url = try folder().appendingPathComponent(alpha ? "alpha.mov" : "clip.mov")
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: alpha ? AVVideoCodecType.proRes4444 : AVVideoCodecType.h264,
-            AVVideoWidthKey: width, AVVideoHeightKey: height,
-        ])
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
-        ])
-        writer.add(input)
-        #expect(writer.startWriting())
-        writer.startSession(atSourceTime: .zero)
-        for index in 0..<frames {
-            try await waitUntilReady(input, of: writer)
-            var buffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, try #require(adaptor.pixelBufferPool), &buffer)
-            let pixels = try #require(buffer)
-            CVPixelBufferLockBaseAddress(pixels, [])
-            let context = try #require(CGContext(
-                data: CVPixelBufferGetBaseAddress(pixels), width: width, height: height, bitsPerComponent: 8,
-                bytesPerRow: CVPixelBufferGetBytesPerRow(pixels), space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue))
-            paint(context, index)
-            CVPixelBufferUnlockBaseAddress(pixels, [])
-            #expect(adaptor.append(pixels, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: 30)))
-        }
-        input.markAsFinished()
-        await writer.finishWriting()
-        #expect(writer.status == .completed)
-        return url
     }
 }

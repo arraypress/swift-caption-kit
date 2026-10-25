@@ -146,8 +146,12 @@ timing.
 `ProfanityFilter` is a deterministic word-list censor with a synthesised bleep;
 `SpeakerAssign` maps diarization turns onto words for per-speaker colours.
 
-**Face-aware** — `AutoPlacement` puts captions just below the speaker's face
-and never over it; `FaceTrack` follows the largest face and emits smoothed crop
+**Face-aware** — `FacePlacer` finds the speaker's head on the canvas (chin
+from the face-contour landmarks, hair from the person mask) and places the
+captions, measured as drawn, below the chin, else above the head, inside a
+safe area — on the face only when neither side has room, with the covered
+share reported (`CaptionPlacement.faceOverlap`). `AutoPlacement` is the older
+source-frame suggestion, kept for callers that use it; `FaceTrack` follows the largest face and emits smoothed crop
 keyframes, so one wide source batch-exports to 9:16, 1:1 and 16:9 with the
 speaker in frame; `FaceCensor` covers a face with blur, pixelation or an emoji.
 All on-device Vision.
