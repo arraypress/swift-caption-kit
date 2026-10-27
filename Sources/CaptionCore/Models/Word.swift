@@ -70,3 +70,26 @@ public struct Word: Codable, Equatable, Hashable, Sendable {
         return last == "." || last == "!" || last == "?" || last == "…"
     }
 }
+
+// MARK: - Decoding
+
+extension Word {
+
+    private enum CodingKeys: String, CodingKey {
+        case text, start, end, confidence, style, speaker
+    }
+
+    /// Decodes a word. `confidence` may be left out — a word list written by
+    /// hand has none — and then means fully confident (`1`), as in
+    /// ``init(text:start:end:confidence:style:)``. `text`, `start` and `end`
+    /// are required.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        start = try container.decode(TimeInterval.self, forKey: .start)
+        end = try container.decode(TimeInterval.self, forKey: .end)
+        confidence = try container.decodeIfPresent(Float.self, forKey: .confidence) ?? 1
+        style = try container.decodeIfPresent(WordStyle.self, forKey: .style)
+        speaker = try container.decodeIfPresent(Int.self, forKey: .speaker)
+    }
+}

@@ -491,7 +491,9 @@ they are implemented in this package.
   [swift-recipe-kit](https://github.com/arraypress/swift-recipe-kit)
 
 Transcription is deliberately out of scope: bring word-level timings from
-whatever you like. `Word(text:start:end:)` is the entire contract.
+whatever you like. `Word(text:start:end:)` is the entire contract — in JSON too:
+`[{"text": "hello", "start": 0.0, "end": 0.4}]` decodes, with `confidence`
+optional (missing means fully confident, since 0.10.1).
 
 ## Licence
 
